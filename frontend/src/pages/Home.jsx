@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
   MicrophoneIcon, 
@@ -11,10 +11,15 @@ import {
   ShieldCheckIcon,
   BoltIcon,
   ChatBubbleBottomCenterTextIcon,
-  ComputerDesktopIcon
+  ComputerDesktopIcon,
+  UserCircleIcon,
+  ArrowRightOnRectangleIcon
 } from '@heroicons/react/24/outline';
+import { useAuth } from '../context/AuthContext';
 
 const Home = () => {
+  const navigate = useNavigate();
+  const { user, logout, isAuthenticated } = useAuth();
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
@@ -24,6 +29,11 @@ const Home = () => {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  const handleLogout = () => {
+    logout();
+    navigate('/');
+  };
 
   const features = [
     {
@@ -125,25 +135,47 @@ const Home = () => {
             </motion.div>
             
             <div className="flex items-center space-x-6">
-              <motion.div
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <Link to="/login" className="text-gray-300 hover:text-white px-4 py-2 text-sm font-medium transition">
-                  Login
-                </Link>
-              </motion.div>
-              <motion.div
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <Link 
-                  to="/register" 
-                  className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-2 rounded-full text-sm font-medium hover:shadow-lg hover:shadow-blue-500/25 transition-all duration-300"
-                >
-                  Get Started Free
-                </Link>
-              </motion.div>
+              {isAuthenticated ? (
+                <>
+                  <div className="flex items-center space-x-3">
+                    <UserCircleIcon className="h-6 w-6 text-blue-400" />
+                    <span className="text-gray-300 text-sm font-medium">
+                      {user?.name}
+                    </span>
+                  </div>
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={handleLogout}
+                    className="flex items-center space-x-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white px-6 py-2 rounded-full text-sm font-medium transition-all duration-300"
+                  >
+                    <ArrowRightOnRectangleIcon className="h-4 w-4" />
+                    <span>Logout</span>
+                  </motion.button>
+                </>
+              ) : (
+                <>
+                  <motion.div
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <Link to="/login" className="text-gray-300 hover:text-white px-4 py-2 text-sm font-medium transition">
+                      Login
+                    </Link>
+                  </motion.div>
+                  <motion.div
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <Link 
+                      to="/register" 
+                      className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-2 rounded-full text-sm font-medium hover:shadow-lg hover:shadow-blue-500/25 transition-all duration-300"
+                    >
+                      Get Started Free
+                    </Link>
+                  </motion.div>
+                </>
+              )}
             </div>
           </div>
         </div>

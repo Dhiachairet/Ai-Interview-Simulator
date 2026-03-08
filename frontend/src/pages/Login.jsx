@@ -2,15 +2,18 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { EnvelopeIcon, LockClosedIcon, SparklesIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
+import { useAuth } from '../context/AuthContext';
 
 const Login = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [formData, setFormData] = useState({
     email: '',
     password: ''
   });
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
+  const [apiError, setApiError] = useState('');
 
   const handleChange = (e) => {
     setFormData({
@@ -22,6 +25,10 @@ const Login = () => {
         ...errors,
         [e.target.name]: ''
       });
+    }
+    // Clear API error when user starts typing
+    if (apiError) {
+      setApiError('');
     }
   };
 
@@ -37,10 +44,25 @@ const Login = () => {
     }
 
     setIsLoading(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setIsLoading(false);
-    // navigate('/dashboard');
+    setApiError('');
+    
+    try {
+      const response = await login({
+        email: formData.email,
+        password: formData.password
+      });
+
+      if (response.success) {
+        // Successfully logged in, redirect to home
+        navigate('/');
+      } else {
+        setApiError(response.error || 'Login failed');
+      }
+    } catch (error) {
+      setApiError(error.error || 'An error occurred during login');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -99,6 +121,17 @@ const Login = () => {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* API Error Message */}
+            {apiError && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-4 bg-red-500/10 border border-red-500/50 rounded-xl"
+              >
+                <p className="text-sm text-red-400 text-center">{apiError}</p>
+              </motion.div>
+            )}
+
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
