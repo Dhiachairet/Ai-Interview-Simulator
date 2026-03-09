@@ -56,6 +56,35 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const handleGoogleCallback = async (token, message) => {
+    try {
+      // Store the token
+      localStorage.setItem('token', token);
+      
+      // Fetch user data with the token
+      const response = await fetch('http://localhost:5000/api/auth/me', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        const userData = data.data;
+        localStorage.setItem('user', JSON.stringify(userData));
+        setUser(userData);
+        
+        // Show success message if provided
+        if (message) {
+          console.log(message);
+        }
+      }
+    } catch (error) {
+      console.error('Error handling Google callback:', error);
+    }
+  };
+
   const logout = () => {
     authService.logout();
     setUser(null);
@@ -66,6 +95,7 @@ export const AuthProvider = ({ children }) => {
     login,
     register,
     logout,
+    handleGoogleCallback,
     isAuthenticated: !!user,
     loading,
   };
