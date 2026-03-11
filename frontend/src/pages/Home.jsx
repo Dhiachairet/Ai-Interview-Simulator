@@ -226,13 +226,15 @@ const Home = () => {
                 transition={{ duration: 0.6, delay: 0.3 }}
                 className="flex flex-col sm:flex-row justify-center space-y-4 sm:space-y-0 sm:space-x-4"
               >
-                <Link to="/register">
+                <Link to={isAuthenticated ? "/interview-config" : "/register"}>
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     className="group relative px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full text-lg font-medium overflow-hidden"
                   >
-                    <span className="relative z-10">Start Practicing Now</span>
+                    <span className="relative z-10">
+                      {isAuthenticated ? "Start New Interview" : "Start Practicing Now"}
+                    </span>
                     <motion.div 
                       className="absolute inset-0 bg-gradient-to-r from-purple-600 to-pink-600"
                       initial={{ x: "100%" }}
