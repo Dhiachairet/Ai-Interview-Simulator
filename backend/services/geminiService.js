@@ -7,15 +7,105 @@ if (!process.env.GEMINI_API_KEY) {
   console.log('✅ GEMINI_API_KEY found');
 }
 
-// ✅ USE THE STABLE MODEL NAME
-const MODEL_NAME = 'gemini-2.5-flash';
+const MODEL_NAMES = [
+  'gemini-2.0-flash-exp',      
+  'gemini-1.5-flash',          
+  'gemini-2.5-flash-lite',     
+  'gemini-1.5-flash-8b',       
+  'gemini-2.0-flash-lite-preview-02-05' 
+];
+
+let currentModelIndex = 0;
+let modelUsageCount = new Map();
+let lastModelSwitchTime = Date.now();
+
+// Initialize usage counters
+MODEL_NAMES.forEach(model => modelUsageCount.set(model, 0));
+
+// Get next model in rotation
+function getNextModel() {
+  const model = MODEL_NAMES[currentModelIndex];
+  currentModelIndex = (currentModelIndex + 1) % MODEL_NAMES.length;
+  return model;
+}
+
+// Get least used model (more sophisticated than simple rotation)
+function getLeastUsedModel() {
+  let minUsage = Infinity;
+  let leastUsedModel = MODEL_NAMES[0];
+  
+  for (const [model, count] of modelUsageCount.entries()) {
+    if (count < minUsage) {
+      minUsage = count;
+      leastUsedModel = model;
+    }
+  }
+  return leastUsedModel;
+}
+
+// Reset counters periodically (every hour)
+setInterval(() => {
+  console.log('🔄 Resetting model usage counters');
+  MODEL_NAMES.forEach(model => modelUsageCount.set(model, 0));
+  lastModelSwitchTime = Date.now();
+}, 60 * 60 * 1000); // Reset every hour
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
+// Enhanced retry helper with model switching
+async function callWithRetry(fn, maxRetries = 5) {
+  let lastError = null;
+  let modelsTried = new Set();
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      // Get current model
+      let currentModel;
+      if (modelsTried.size === MODEL_NAMES.length) {
+        // If we've tried all models, reset and start over
+        modelsTried.clear();
+      }
+      currentModel = getNextModel();
+      modelsTried.add(currentModel);
+      
+      console.log(`📡 Attempt ${attempt + 1}/${maxRetries} using model: ${currentModel}`);
+      
+      const result = await fn(currentModel);
+      
+      // Increment usage counter for successful request
+      modelUsageCount.set(currentModel, (modelUsageCount.get(currentModel) || 0) + 1);
+      console.log(`✅ Success with ${currentModel} (usage: ${modelUsageCount.get(currentModel)})`);
+      
+      return result;
+      
+    } catch (error) {
+      lastError = error;
+      const isRateLimit = error.message?.includes('429') || 
+                          error.message?.includes('quota') ||
+                          error.status === 429 ||
+                          error.message?.includes('limit');
+      
+      if (isRateLimit) {
+        console.warn(`⚠️ Rate limit hit on model, switching...`);
+        const waitTime = Math.pow(2, attempt) * 1000 + Math.random() * 1000;
+        console.log(`⏳ Waiting ${waitTime}ms before next attempt...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      } else {
+        // Non-rate-limit error, still try other models
+        console.warn(`⚠️ Error with model: ${error.message}`);
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+  }
+  
+  console.error('❌ All models failed after max retries');
+  throw lastError || new Error('Max retries exceeded');
+}
+
 // Generate interview question
 async function generateQuestion(jobRole, personality, difficulty, previousAnswer = null) {
-  try {
-    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+  return callWithRetry(async (modelName) => {
+    const model = genAI.getGenerativeModel({ model: modelName });
     
     let prompt = `You are a ${personality} interviewer conducting a ${difficulty} level interview for a ${jobRole} position.`;
     
@@ -30,23 +120,14 @@ async function generateQuestion(jobRole, personality, difficulty, previousAnswer
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const text = response.text();
-    console.log('✅ Question generated successfully');
     return text;
-  } catch (error) {
-    console.error('Gemini API Error in generateQuestion:', error);
-    // Return a fallback question
-    if (!previousAnswer) {
-      return `Welcome to your ${difficulty} level interview for ${jobRole}. Could you please introduce yourself and tell me about your relevant experience?`;
-    } else {
-      return `Thank you for your response. Can you tell me about a challenging project you worked on?`;
-    }
-  }
+  });
 }
 
 // Evaluate user's answer
 async function evaluateAnswer(question, answer, jobRole, personality, difficulty) {
-  try {
-    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+  return callWithRetry(async (modelName) => {
+    const model = genAI.getGenerativeModel({ model: modelName });
     
     const prompt = `You are an expert interviewer. Evaluate this candidate's answer:
 
@@ -69,9 +150,7 @@ Give a score from 0-100 based on relevance, clarity, and depth.`;
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const text = response.text();
-    console.log('✅ Evaluation received successfully');
     
-    // Try to parse JSON
     try {
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
@@ -87,15 +166,21 @@ Give a score from 0-100 based on relevance, clarity, and depth.`;
         improvements: ["Add more specific examples", "Structure your answer more clearly"]
       };
     }
-  } catch (error) {
-    console.error('Gemini API Error in evaluateAnswer:', error);
-    return {
-      score: 65,
-      feedback: "Thank you for your response. Keep practicing!",
-      strengths: ["Participated in the interview"],
-      improvements: ["Review common interview questions", "Practice your responses"]
-    };
-  }
+  });
 }
 
-module.exports = { generateQuestion, evaluateAnswer };
+// Optional: Get current usage statistics
+function getUsageStats() {
+  const stats = {};
+  for (const [model, count] of modelUsageCount.entries()) {
+    stats[model] = count;
+  }
+  return stats;
+}
+
+module.exports = { 
+  generateQuestion, 
+  evaluateAnswer,
+  getUsageStats,
+  MODEL_NAMES
+};
