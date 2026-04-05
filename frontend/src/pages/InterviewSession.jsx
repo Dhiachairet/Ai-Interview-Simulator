@@ -16,7 +16,9 @@ import {
   PauseIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
+  SpeakerWaveIcon,
+  SpeakerXMarkIcon
 } from '@heroicons/react/24/outline';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -158,6 +160,156 @@ const useVoiceRecognition = () => {
   };
 };
 
+// ElevenLabs TTS Hook (calls backend)
+const useElevenLabsTTS = () => {
+  const [speaking, setSpeaking] = useState(false);
+  const [audioEnabled, setAudioEnabled] = useState(true);
+  const audioRef = useRef(null);
+  const currentAudioUrlRef = useRef(null);
+
+  const base64ToBlob = (base64, mimeType) => {
+    try {
+      const byteCharacters = atob(base64);
+      const byteArrays = [];
+      for (let i = 0; i < byteCharacters.length; i += 512) {
+        const slice = byteCharacters.slice(i, i + 512);
+        const byteNumbers = new Array(slice.length);
+        for (let j = 0; j < slice.length; j++) {
+          byteNumbers[j] = slice.charCodeAt(j);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        byteArrays.push(byteArray);
+      }
+      return new Blob(byteArrays, { type: mimeType });
+    } catch (error) {
+      console.error('Base64 conversion error:', error);
+      return null;
+    }
+  };
+
+  const speak = useCallback(async (text, personality, isQuestion = true) => {
+    if (!audioEnabled || !text) return;
+    
+    // Don't speak long feedback messages
+    if (!isQuestion && text.length > 300) return;
+    
+    // Don't speak completion messages
+    if (text.includes('Interview Complete')) return;
+    
+    // Clean the text
+    const cleanText = text
+      .replace(/\*\*/g, '')
+      .replace(/[🌟👍💪📊⭐🎉💪🎯📈]/g, '')
+      .replace(/Feedback:|Score:|Strengths:|Areas to Improve:|Final Score:|Duration:/g, '')
+      .trim();
+    
+    try {
+      setSpeaking(true);
+      
+      const response = await interviewService.speak(cleanText, personality, isQuestion);
+      
+      if (response.success && response.audio) {
+        // Clean up previous audio URL
+        if (currentAudioUrlRef.current) {
+          URL.revokeObjectURL(currentAudioUrlRef.current);
+        }
+        
+        const audioBlob = base64ToBlob(response.audio, 'audio/mp3');
+        if (!audioBlob) {
+          throw new Error('Failed to convert audio');
+        }
+        
+        const audioUrl = URL.createObjectURL(audioBlob);
+        currentAudioUrlRef.current = audioUrl;
+        
+        if (audioRef.current) {
+          audioRef.current.pause();
+        }
+        
+        const audio = new Audio(audioUrl);
+        audioRef.current = audio;
+        
+        audio.onended = () => {
+          setSpeaking(false);
+          if (currentAudioUrlRef.current) {
+            URL.revokeObjectURL(currentAudioUrlRef.current);
+            currentAudioUrlRef.current = null;
+          }
+        };
+        
+        audio.onerror = (e) => {
+          console.error('Audio playback error:', e);
+          setSpeaking(false);
+          fallbackSpeak(cleanText, personality);
+        };
+        
+        await audio.play();
+        console.log(`ElevenLabs TTS: Speaking with ${personality} voice`);
+      } else {
+        console.log('ElevenLabs failed, using fallback Web Speech API');
+        fallbackSpeak(cleanText, personality);
+      }
+    } catch (error) {
+      console.error('ElevenLabs TTS Error:', error);
+      fallbackSpeak(cleanText, personality);
+      setSpeaking(false);
+    }
+  }, [audioEnabled]);
+
+  // Fallback to Web Speech API if ElevenLabs fails
+  const fallbackSpeak = useCallback((text, personality) => {
+    if (!window.speechSynthesis) return;
+    
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    
+    // Personality-based voice settings for fallback
+    const voiceSettings = {
+      'Strict Technical': { rate: 1.05, pitch: 0.85 },
+      'Friendly HR': { rate: 0.92, pitch: 1.1 },
+      'Stress Tester': { rate: 1.25, pitch: 1.0 },
+      'Theoretical Expert': { rate: 0.88, pitch: 0.95 }
+    };
+    
+    const settings = voiceSettings[personality] || voiceSettings['Friendly HR'];
+    utterance.rate = settings.rate;
+    utterance.pitch = settings.pitch;
+    utterance.lang = 'en-US';
+    
+    utterance.onstart = () => setSpeaking(true);
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = () => setSpeaking(false);
+    
+    window.speechSynthesis.speak(utterance);
+  }, []);
+
+  const stopSpeaking = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    setSpeaking(false);
+  }, []);
+
+  const toggleAudio = useCallback(() => {
+    if (speaking) {
+      stopSpeaking();
+    }
+    setAudioEnabled(prev => !prev);
+  }, [speaking, stopSpeaking]);
+
+  return { 
+    speak, 
+    stopSpeaking, 
+    speaking, 
+    audioEnabled, 
+    toggleAudio 
+  };
+};
+
 // Voice Wave Animation Component
 const VoiceWave = ({ active, color = "bg-cyan-500" }) => (
   <div className="flex items-center gap-0.5 h-6">
@@ -228,8 +380,17 @@ const InterviewSession = () => {
     resetTranscript
   } = useVoiceRecognition();
 
+  // ElevenLabs TTS hook
+  const { 
+    speak, 
+    stopSpeaking, 
+    speaking, 
+    audioEnabled, 
+    toggleAudio 
+  } = useElevenLabsTTS();
+
   const [interviewId, setInterviewId] = useState(location.state?.resumeId || null);
-  const [isLoading, setIsLoading] = useState(!isResuming); // Don't show loading if resuming
+  const [isLoading, setIsLoading] = useState(!isResuming);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isVideoOn, setIsVideoOn] = useState(true);
   const [showChat, setShowChat] = useState(true);
@@ -241,6 +402,7 @@ const InterviewSession = () => {
   const [showError, setShowError] = useState(false);
   const [interviewComplete, setInterviewComplete] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [lastSpokenMessage, setLastSpokenMessage] = useState("");
   
   const progress = (currentQuestionNumber / totalQuestions) * 100;
 
@@ -254,6 +416,27 @@ const InterviewSession = () => {
     }
     return () => clearInterval(timer);
   }, [interviewComplete, currentQuestionNumber, messages.length]);
+
+  // Auto-speak AI messages (only questions, not feedback)
+  useEffect(() => {
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage?.role === 'ai' && !lastMessage.isThinking && audioEnabled && !speaking) {
+      // Only speak questions, not feedback or completion messages
+      const isQuestion = lastMessage.text && 
+                        !lastMessage.text.includes('**Feedback:**') &&
+                        !lastMessage.text.includes('Score:') &&
+                        !lastMessage.text.includes('Interview Complete') &&
+                        lastMessage.text.length < 300;
+      
+      // Don't repeat the same message
+      if (isQuestion && lastMessage.text !== lastSpokenMessage) {
+        setLastSpokenMessage(lastMessage.text);
+        setTimeout(() => {
+          speak(lastMessage.text, sessionDetails.style, true);
+        }, 500);
+      }
+    }
+  }, [messages, speak, audioEnabled, speaking, sessionDetails.style, lastSpokenMessage]);
 
   // Update input text when transcript changes
   useEffect(() => {
@@ -290,6 +473,16 @@ const InterviewSession = () => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Replay current question
+  const replayQuestion = () => {
+    if (currentQuestionText && !speaking) {
+      stopSpeaking();
+      setTimeout(() => {
+        speak(currentQuestionText, sessionDetails.style, true);
+      }, 100);
+    }
+  };
+
   // Load existing interview if resuming
   const loadExistingInterview = async () => {
     if (!isResuming) return;
@@ -300,7 +493,6 @@ const InterviewSession = () => {
       if (response.success) {
         const interviewData = response.data;
         
-        // Calculate current question number (answered questions + 1)
         const answeredQuestions = interviewData.questions.filter(q => q.userAnswer).length;
         const currentQIndex = answeredQuestions;
         const currentQ = interviewData.questions[currentQIndex];
@@ -309,7 +501,6 @@ const InterviewSession = () => {
         setCurrentQuestionNumber(currentQIndex + 1);
         setCurrentQuestionText(currentQ?.question || "");
         
-        // Build message history
         const messageHistory = [];
         for (let i = 0; i <= currentQIndex; i++) {
           const q = interviewData.questions[i];
@@ -338,7 +529,6 @@ const InterviewSession = () => {
         
         setMessages(messageHistory);
         
-        // If all questions are answered, mark as complete
         if (answeredQuestions >= totalQuestions) {
           setInterviewComplete(true);
         }
@@ -370,7 +560,6 @@ const InterviewSession = () => {
           timestamp: new Date().toLocaleTimeString()
         }]);
       } else {
-        // Fallback if API fails
         const fallbackQuestion = `Welcome to your ${sessionDetails.difficulty} level interview for ${sessionDetails.role}. Tell me about yourself and your experience.`;
         setCurrentQuestionText(fallbackQuestion);
         setCurrentQuestionNumber(1);
@@ -410,6 +599,9 @@ const InterviewSession = () => {
     
     setIsSubmitting(true);
     
+    // Stop any ongoing speech
+    stopSpeaking();
+    
     // Add user message
     setMessages(prev => [...prev, { 
       role: "user", 
@@ -442,7 +634,6 @@ const InterviewSession = () => {
       setMessages(prev => prev.filter(msg => !msg.isThinking));
       
       if (response.success) {
-        // Add AI feedback
         const score = response.evaluation.score;
         let scoreEmoji = '📊';
         if (score >= 80) scoreEmoji = '🌟';
@@ -456,7 +647,6 @@ const InterviewSession = () => {
         }]);
         
         if (response.nextQuestion && !response.isComplete) {
-          // Add next question after a delay
           setTimeout(() => {
             setMessages(prev => [...prev, { 
               role: "ai", 
@@ -469,10 +659,19 @@ const InterviewSession = () => {
         } else if (response.isComplete || (!response.nextQuestion && currentQuestionNumber >= totalQuestions)) {
           setInterviewComplete(true);
           
+          // Calculate final average score
+          const allScores = messages
+            .filter(m => m.text && m.text.includes('**Score:**'))
+            .map(m => {
+              const match = m.text.match(/\*\*Score:\*\*\s*(\d+)/);
+              return match ? parseInt(match[1]) : 0;
+            });
+          const finalAvg = allScores.length > 0 ? Math.round(allScores.reduce((a, b) => a + b, 0) / allScores.length) : 0;
+          
           setTimeout(() => {
             setMessages(prev => [...prev, { 
               role: "ai", 
-              text: `🎉 **Interview Complete!** 🎉\n\n📈 **Final Score:** Calculated\n⏱️ **Duration:** ${formatTime(elapsedTime)}\n\nThank you for participating in this interview practice session.\n\nYour responses have been saved. You can now return to the dashboard to view your progress and start new interviews.\n\nKeep practicing to improve your scores! 🚀`,
+              text: `🎉 **Interview Complete!** 🎉\n\n📈 **Final Score:** ${finalAvg}/100\n⏱️ **Duration:** ${formatTime(elapsedTime)}\n\nThank you for participating in this interview practice session.\n\nYour responses have been saved. You can now return to the dashboard to view your progress and start new interviews.\n\nKeep practicing to improve your scores! 🚀`,
               timestamp: new Date().toLocaleTimeString()
             }]);
           }, 1000);
@@ -510,12 +709,24 @@ const InterviewSession = () => {
 
   const handleEndInterview = () => {
     if (window.confirm('Are you sure you want to end this interview? Your progress will be saved.')) {
+      stopSpeaking();
       navigate('/history');
     }
   };
 
   // Combined text for display
   const displayText = inputText + (isListening && interimTranscript ? ' ' + interimTranscript : '');
+
+  // Get personality-based color for UI
+  const getPersonalityColor = () => {
+    switch (sessionDetails.style) {
+      case 'Strict Technical': return 'from-blue-500 to-cyan-500';
+      case 'Friendly HR': return 'from-green-500 to-emerald-500';
+      case 'Stress Tester': return 'from-red-500 to-orange-500';
+      case 'Theoretical Expert': return 'from-purple-500 to-violet-500';
+      default: return 'from-cyan-500 to-blue-500';
+    }
+  };
 
   return (
     <div className="fixed inset-0 overflow-hidden" style={{ backgroundColor: 'hsl(222 30% 6%)' }}>
@@ -531,15 +742,31 @@ const InterviewSession = () => {
           </button>
           <div>
             <h1 className="text-sm font-medium" style={{ color: 'hsl(0 0% 100%)' }}>
-              {isResuming ? (sessionDetails.role || 'Interview') : sessionDetails.role} {isResuming && '(Resumed)'}
+              {sessionDetails.role} Interview {isResuming && '(Resumed)'}
             </h1>
             <p className="text-xs" style={{ color: 'hsl(222 10% 50%)' }}>
-              {sessionDetails.style || 'Interview'} • {sessionDetails.difficulty || 'Medium'}
+              {sessionDetails.style} • {sessionDetails.difficulty}
             </p>
           </div>
         </div>
 
         <div className="ml-auto flex items-center gap-4">
+          {/* Audio Toggle Button */}
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={toggleAudio}
+            className="w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200"
+            style={{ backgroundColor: 'hsl(222 25% 10%)', color: 'hsl(222 10% 60%)' }}
+            title={audioEnabled ? "Mute voice" : "Unmute voice"}
+          >
+            {audioEnabled ? (
+              <SpeakerWaveIcon className="w-4 h-4" />
+            ) : (
+              <SpeakerXMarkIcon className="w-4 h-4" />
+            )}
+          </motion.button>
+          
           <div className="text-sm" style={{ color: 'hsl(222 10% 60%)' }}>
             Question {currentQuestionNumber} of {totalQuestions}
           </div>
@@ -556,7 +783,7 @@ const InterviewSession = () => {
       <div className="h-0.5" style={{ backgroundColor: 'hsl(222 20% 15%)' }}>
         <motion.div
           className="h-full"
-          style={{ background: 'linear-gradient(to right, hsl(189 95% 50%), hsl(217 91% 60%))' }}
+          style={{ background: `linear-gradient(to right, ${getPersonalityColor().split(' ')[1]}, ${getPersonalityColor().split(' ')[3]})` }}
           initial={{ width: 0 }}
           animate={{ width: `${progress}%` }}
           transition={{ duration: 0.5 }}
@@ -584,14 +811,14 @@ const InterviewSession = () => {
               <div className="relative z-10 mb-6">
                 <div className="flex items-center justify-between">
                   <h3 className="font-medium" style={{ color: 'hsl(0 0% 100%)' }}>
-                    AI Interviewer
+                    AI Interviewer ({sessionDetails.style})
                   </h3>
                   <div className="px-3 py-1 rounded-full text-xs font-medium"
                     style={{
                       backgroundColor: 'hsl(189 95% 50% / 0.1)',
                       color: 'hsl(189 95% 50%)'
                     }}>
-                    {isLoading ? "Loading..." : interviewComplete ? "Complete" : "Active"}
+                    {isLoading ? "Loading..." : interviewComplete ? "Complete" : speaking ? "Speaking..." : "Active"}
                   </div>
                 </div>
               </div>
@@ -603,7 +830,7 @@ const InterviewSession = () => {
                     style={{
                       width: '200px',
                       height: '200px',
-                      borderColor: 'hsl(189 95% 50% / 0.2)',
+                      borderColor: `hsl(189 95% 50% / 0.2)`,
                       left: '-50px',
                       top: '-50px'
                     }}
@@ -615,7 +842,7 @@ const InterviewSession = () => {
                     style={{
                       width: '240px',
                       height: '240px',
-                      borderColor: 'hsl(217 91% 60% / 0.2)',
+                      borderColor: `hsl(217 91% 60% / 0.2)`,
                       left: '-70px',
                       top: '-70px'
                     }}
@@ -626,7 +853,7 @@ const InterviewSession = () => {
                   <motion.div
                     className="relative w-24 h-24 rounded-full flex items-center justify-center"
                     style={{
-                      background: 'linear-gradient(135deg, hsl(189 95% 50%), hsl(217 91% 60%))',
+                      background: `linear-gradient(135deg, ${getPersonalityColor().split(' ')[1]}, ${getPersonalityColor().split(' ')[3]})`,
                       boxShadow: '0 0 40px hsl(189 95% 50% / 0.5)'
                     }}
                     animate={{
@@ -643,8 +870,18 @@ const InterviewSession = () => {
                 </div>
 
                 <div className="mt-8">
-                  <VoiceWave active={!interviewComplete && !isLoading && !isSubmitting} color="bg-cyan-500" />
+                  <VoiceWave active={speaking || (!interviewComplete && !isLoading && !isSubmitting)} color="bg-cyan-500" />
                 </div>
+                
+                {speaking && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-4 text-xs text-cyan-400"
+                  >
+                    Speaking with ElevenLabs...
+                  </motion.div>
+                )}
               </div>
             </motion.div>
 
@@ -702,11 +939,29 @@ const InterviewSession = () => {
             <div className="flex items-start gap-3">
               <ChatBubbleLeftRightIcon className="w-5 h-5 mt-0.5 flex-shrink-0" style={{ color: 'hsl(189 95% 50%)' }} />
               <div className="flex-1 min-w-0">
-                <p className="text-xs mb-1" style={{ color: 'hsl(222 10% 60%)' }}>
-                  Current Question
-                </p>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-xs" style={{ color: 'hsl(222 10% 60%)' }}>
+                    Current Question
+                  </p>
+                  {currentQuestionText && !interviewComplete && (
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={replayQuestion}
+                      disabled={speaking}
+                      className="p-1 rounded-lg hover:bg-white/10 transition disabled:opacity-50"
+                      title="Replay question"
+                    >
+                      {speaking ? (
+                        <div className="w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <SpeakerWaveIcon className="w-3 h-3 text-cyan-400" />
+                      )}
+                    </motion.button>
+                  )}
+                </div>
                 <p className="text-sm leading-relaxed" style={{ color: 'hsl(0 0% 100%)' }}>
-                  {isLoading ? "Loading..." : currentQuestionText || "Interview complete!"}
+                  {isLoading ? "Loading your first question..." : currentQuestionText || "Interview complete!"}
                 </p>
               </div>
             </div>
@@ -778,7 +1033,7 @@ const InterviewSession = () => {
           </div>
         </div>
 
-        {/* Chat Sidebar */}
+        {/* Chat Sidebar - same as before */}
         <AnimatePresence>
           {showChat && (
             <motion.div
@@ -928,7 +1183,7 @@ const InterviewSession = () => {
                     className="w-10 h-10 rounded-lg flex items-center justify-center"
                     style={{
                       background: displayText.trim() && !interviewComplete && !isSubmitting && !isLoading
-                        ? 'linear-gradient(135deg, hsl(189 95% 50%), hsl(217 91% 60%))'
+                        ? `linear-gradient(135deg, ${getPersonalityColor().split(' ')[1]}, ${getPersonalityColor().split(' ')[3]})`
                         : 'hsl(222 25% 10%)',
                       color: 'hsl(0 0% 100%)',
                       opacity: displayText.trim() && !interviewComplete && !isSubmitting && !isLoading ? 1 : 0.5,
@@ -956,7 +1211,7 @@ const InterviewSession = () => {
               onClick={() => setShowChat(true)}
               className="fixed right-6 bottom-6 w-14 h-14 rounded-full flex items-center justify-center shadow-xl"
               style={{
-                background: 'linear-gradient(135deg, hsl(189 95% 50%), hsl(217 91% 60%))',
+                background: `linear-gradient(135deg, ${getPersonalityColor().split(' ')[1]}, ${getPersonalityColor().split(' ')[3]})`,
                 color: 'hsl(0 0% 100%)'
               }}
               initial={{ scale: 0, opacity: 0 }}

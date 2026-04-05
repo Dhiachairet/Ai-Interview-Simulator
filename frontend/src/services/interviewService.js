@@ -45,6 +45,20 @@ const interviewService = {
       console.error('Get interview error:', error);
       return { success: false };
     }
+  },
+  
+  speak: async (text, personality, isQuestion = true) => {
+    try {
+      const response = await api.post('/api/interview/speak', {
+        text,
+        personality,
+        isQuestion
+      });
+      return response.data;
+    } catch (error) {
+      console.error('TTS error:', error);
+      return { success: false };
+    }
   }
 };
 
