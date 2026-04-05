@@ -25,6 +25,9 @@ app.get('/', (req, res) => {
 // Mount auth routes
 app.use('/api/auth', require('./routes/authRoutes'));
 
+
+app.use('/api/interview', require('./routes/interviewRoutes'));
+
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

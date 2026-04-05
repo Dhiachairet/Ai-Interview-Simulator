@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import interviewService from '../services/interviewService';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   CpuChipIcon,
@@ -30,7 +31,6 @@ const useVoiceRecognition = () => {
   const recognitionRef = useRef(null);
 
   useEffect(() => {
-    // Check browser support
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     
     if (!SpeechRecognition) {
@@ -39,14 +39,12 @@ const useVoiceRecognition = () => {
       return;
     }
 
-    // Initialize recognition
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = 'en-US';
     recognition.maxAlternatives = 1;
 
-    // Handle results
     recognition.onresult = (event) => {
       let interimText = '';
       let finalText = '';
@@ -68,11 +66,9 @@ const useVoiceRecognition = () => {
       setInterimTranscript(interimText);
     };
 
-    // Handle errors
     recognition.onerror = (event) => {
       console.warn('Speech recognition error:', event.error);
       
-      // Only show user-facing errors for critical issues
       switch (event.error) {
         case 'audio-capture':
           setError('No microphone found. Please check your microphone connection.');
@@ -83,12 +79,10 @@ const useVoiceRecognition = () => {
           setIsListening(false);
           break;
         case 'network':
-          // Network errors are common with Web Speech API - just log and stop listening
           console.info('Speech recognition network error. Voice recognition requires an internet connection.');
           setIsListening(false);
           break;
         case 'no-speech':
-          // Don't show error for no-speech - just stop listening silently
           setIsListening(false);
           break;
         default:
@@ -97,7 +91,6 @@ const useVoiceRecognition = () => {
       }
     };
 
-    // Handle end
     recognition.onend = () => {
       setIsListening(false);
       setInterimTranscript('');
@@ -124,9 +117,7 @@ const useVoiceRecognition = () => {
     } catch (err) {
       console.error('Error starting recognition:', err);
       
-      // Handle specific error cases
       if (err.name === 'InvalidStateError') {
-        // Recognition is already started, stop and restart
         try {
           recognitionRef.current.stop();
           setTimeout(() => {
@@ -222,12 +213,6 @@ const InterviewSession = () => {
     difficulty: 'Hard'
   };
 
-  const sampleMessages = [
-    { role: "ai", text: "Welcome! I'm your AI interviewer today. Let's start with a classic — can you tell me about yourself and your experience with frontend development?" },
-    { role: "user", text: "Sure! I have 3 years of experience building web applications with React and TypeScript. I've worked on e-commerce platforms and SaaS products." },
-    { role: "ai", text: "Great background! Now, can you explain the difference between useMemo and useCallback in React? When would you choose one over the other?" },
-  ];
-
   // Voice recognition hook
   const {
     isListening,
@@ -240,17 +225,18 @@ const InterviewSession = () => {
     resetTranscript
   } = useVoiceRecognition();
 
-  const [isRecording, setIsRecording] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [isVideoOn, setIsVideoOn] = useState(true);
   const [showChat, setShowChat] = useState(true);
-  const [messages, setMessages] = useState(sampleMessages);
+  const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState("");
-  const [currentQuestion] = useState(3);
-  const [totalQuestions] = useState(10);
+  const [currentQuestionText, setCurrentQuestionText] = useState("");
+  const [currentQuestionNumber, setCurrentQuestionNumber] = useState(0);
+  const [totalQuestions] = useState(5);
   const [showError, setShowError] = useState(false);
+  const [interviewComplete, setInterviewComplete] = useState(false);
   
-  const progress = (currentQuestion / totalQuestions) * 100;
+  const progress = (currentQuestionNumber / totalQuestions) * 100;
 
   // Update input text when transcript changes
   useEffect(() => {
@@ -259,7 +245,7 @@ const InterviewSession = () => {
     }
   }, [transcript]);
 
-  // Show error toast (only for critical errors, not network issues)
+  // Show error toast
   useEffect(() => {
     if (voiceError) {
       setShowError(true);
@@ -280,24 +266,117 @@ const InterviewSession = () => {
     scrollToBottom();
   }, [messages]);
 
-  const handleSend = () => {
+  // Start interview when component mounts
+  useEffect(() => {
+    startInterview();
+  }, []);
+
+  const startInterview = async () => {
+    setIsLoading(true);
+    try {
+      const response = await interviewService.startInterview({
+        jobRole: sessionDetails.role,
+        personality: sessionDetails.style,
+        difficulty: sessionDetails.difficulty
+      });
+      
+      if (response.success) {
+        const firstQuestion = response.question;
+        setCurrentQuestionText(firstQuestion);
+        setCurrentQuestionNumber(1);
+        setMessages([{ 
+          role: "ai", 
+          text: firstQuestion 
+        }]);
+      } else {
+        // Fallback if API fails
+        const fallbackQuestion = `Welcome to your ${sessionDetails.difficulty} level interview for ${sessionDetails.role}. Tell me about yourself and your experience.`;
+        setCurrentQuestionText(fallbackQuestion);
+        setCurrentQuestionNumber(1);
+        setMessages([{ 
+          role: "ai", 
+          text: fallbackQuestion 
+        }]);
+      }
+    } catch (error) {
+      console.error('Failed to start interview:', error);
+      const fallbackQuestion = `Welcome to your interview! Let's begin. Tell me about yourself and your experience with ${sessionDetails.role}.`;
+      setCurrentQuestionText(fallbackQuestion);
+      setCurrentQuestionNumber(1);
+      setMessages([{ 
+        role: "ai", 
+        text: fallbackQuestion 
+      }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSend = async () => {
     const textToSend = inputText.trim();
-    if (!textToSend) return;
+    if (!textToSend || interviewComplete) return;
     
-    setMessages([...messages, { role: "user", text: textToSend }]);
+    // Add user message
+    setMessages(prev => [...prev, { role: "user", text: textToSend }]);
     setInputText("");
     resetTranscript();
     
-    setTimeout(() => {
-      setMessages(prev => [...prev, {
-        role: "ai",
-        text: "That's an interesting approach. Can you walk me through how you would optimize the rendering performance of a large list component?"
+    // Add thinking indicator
+    setMessages(prev => [...prev, { role: "ai", text: "...", isThinking: true }]);
+    
+    try {
+      const isComplete = currentQuestionNumber >= totalQuestions;
+      
+      const response = await interviewService.submitAnswer({
+        jobRole: sessionDetails.role,
+        personality: sessionDetails.style,
+        difficulty: sessionDetails.difficulty,
+        currentQuestion: currentQuestionText,
+        userAnswer: textToSend,
+        questionNumber: currentQuestionNumber,
+        isComplete: isComplete
+      });
+      
+      // Remove thinking indicator
+      setMessages(prev => prev.filter(msg => !msg.isThinking));
+      
+      if (response.success) {
+        // Add AI feedback
+        setMessages(prev => [...prev, { 
+          role: "ai", 
+          text: `📊 **Feedback:** ${response.evaluation.feedback}\n\n⭐ **Score:** ${response.evaluation.score}/100\n\n💪 **Strengths:** ${response.evaluation.strengths?.join(', ') || 'Good effort'}\n\n🎯 **Improvements:** ${response.evaluation.improvements?.join(', ') || 'Keep practicing'}` 
+        }]);
+        
+        if (response.nextQuestion && !response.isComplete) {
+          // Add next question after a delay
+          setTimeout(() => {
+            setMessages(prev => [...prev, { role: "ai", text: response.nextQuestion }]);
+            setCurrentQuestionText(response.nextQuestion);
+            setCurrentQuestionNumber(prev => prev + 1);
+          }, 2000);
+        } else if (response.isComplete || (!response.nextQuestion && currentQuestionNumber >= totalQuestions)) {
+          setInterviewComplete(true);
+          setTimeout(() => {
+            setMessages(prev => [...prev, { 
+              role: "ai", 
+              text: "🎉 **Interview Complete!** 🎉\n\nThank you for participating in this interview practice session.\n\nYour responses have been recorded. You can now return to the dashboard to view your progress and start new interviews.\n\nKeep practicing to improve your scores!" 
+            }]);
+          }, 1000);
+        }
+      }
+    } catch (error) {
+      console.error('Error submitting answer:', error);
+      setMessages(prev => prev.filter(msg => !msg.isThinking));
+      setMessages(prev => [...prev, { 
+        role: "ai", 
+        text: "Sorry, I encountered an error processing your answer. Please try again." 
       }]);
-    }, 1500);
+    }
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
       handleSend();
     }
   };
@@ -312,9 +391,11 @@ const InterviewSession = () => {
     }
   };
 
-  const currentQuestionText = "Can you explain the difference between useMemo and useCallback in React? When would you choose one over the other?";
+  const handleEndInterview = () => {
+    navigate('/interview-config');
+  };
 
-  // Combined text for display (transcript + interim)
+  // Combined text for display
   const displayText = inputText + (isListening && interimTranscript ? ' ' + interimTranscript : '');
 
   return (
@@ -323,7 +404,7 @@ const InterviewSession = () => {
       <div className="h-12 border-b flex items-center px-6" style={{ borderColor: 'hsl(222 20% 15%)' }}>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate('/interview-config')}
+            onClick={handleEndInterview}
             className="w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 hover:opacity-70"
             style={{ backgroundColor: 'hsl(222 25% 10%)', color: 'hsl(222 10% 60%)' }}
           >
@@ -341,12 +422,12 @@ const InterviewSession = () => {
 
         <div className="ml-auto flex items-center gap-4">
           <div className="text-sm" style={{ color: 'hsl(222 10% 60%)' }}>
-            Question {currentQuestion} of {totalQuestions}
+            Question {currentQuestionNumber} of {totalQuestions}
           </div>
           <div className="flex items-center gap-2">
             <ClockIcon className="w-4 h-4" style={{ color: 'hsl(222 10% 60%)' }} />
             <span className="text-sm font-mono" style={{ color: 'hsl(0 0% 100%)' }}>
-              12:34
+              {new Date().toLocaleTimeString()}
             </span>
           </div>
         </div>
@@ -376,13 +457,11 @@ const InterviewSession = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
             >
-              {/* Background Particles */}
               <AvatarParticle delay={0} size={40} x="10%" y="20%" />
               <AvatarParticle delay={0.5} size={30} x="70%" y="60%" />
               <AvatarParticle delay={1} size={50} x="80%" y="10%" />
               <AvatarParticle delay={1.5} size={25} x="20%" y="80%" />
 
-              {/* Header */}
               <div className="relative z-10 mb-6">
                 <div className="flex items-center justify-between">
                   <h3 className="font-medium" style={{ color: 'hsl(0 0% 100%)' }}>
@@ -393,15 +472,13 @@ const InterviewSession = () => {
                       backgroundColor: 'hsl(189 95% 50% / 0.1)',
                       color: 'hsl(189 95% 50%)'
                     }}>
-                    Active
+                    {isLoading ? "Loading..." : interviewComplete ? "Complete" : "Active"}
                   </div>
                 </div>
               </div>
 
-              {/* AI Avatar with Orbiting Rings */}
               <div className="relative z-10 flex flex-col items-center justify-center h-full">
                 <div className="relative">
-                  {/* Orbiting Rings */}
                   <motion.div
                     className="absolute inset-0 rounded-full border-2"
                     style={{
@@ -427,7 +504,6 @@ const InterviewSession = () => {
                     transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
                   />
 
-                  {/* Avatar with Pulse-Glow */}
                   <motion.div
                     className="relative w-24 h-24 rounded-full flex items-center justify-center"
                     style={{
@@ -447,9 +523,8 @@ const InterviewSession = () => {
                   </motion.div>
                 </div>
 
-                {/* Voice Wave */}
                 <div className="mt-8">
-                  <VoiceWave active={!isPaused} color="bg-cyan-500" />
+                  <VoiceWave active={!interviewComplete && !isLoading} color="bg-cyan-500" />
                 </div>
               </div>
             </motion.div>
@@ -477,7 +552,6 @@ const InterviewSession = () => {
                 </div>
               </div>
 
-              {/* Camera Feed Placeholder */}
               <div className="relative z-10 flex flex-col items-center justify-center h-full">
                 {isVideoOn ? (
                   <div className="w-full h-full rounded-xl overflow-hidden"
@@ -513,7 +587,7 @@ const InterviewSession = () => {
                   Current Question
                 </p>
                 <p className="text-sm leading-relaxed" style={{ color: 'hsl(0 0% 100%)' }}>
-                  {currentQuestionText}
+                  {isLoading ? "Loading your first question..." : currentQuestionText || "Click start to begin"}
                 </p>
               </div>
             </div>
@@ -523,28 +597,16 @@ const InterviewSession = () => {
           <div className="mt-4 flex items-center justify-center gap-3 flex-shrink-0">
             <motion.button
               onClick={toggleVoiceRecognition}
-              disabled={!voiceSupported}
+              disabled={!voiceSupported || interviewComplete}
               className="w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 relative"
               style={{
                 backgroundColor: isListening ? 'hsl(0 80% 60%)' : 'hsl(222 25% 10%)',
                 color: 'hsl(0 0% 100%)',
-                opacity: voiceSupported ? 1 : 0.5,
-                cursor: voiceSupported ? 'pointer' : 'not-allowed'
+                opacity: voiceSupported && !interviewComplete ? 1 : 0.5,
+                cursor: voiceSupported && !interviewComplete ? 'pointer' : 'not-allowed'
               }}
-              whileHover={{ scale: voiceSupported ? 1.1 : 1 }}
-              whileTap={{ scale: voiceSupported ? 0.95 : 1 }}
-              animate={isListening ? {
-                boxShadow: [
-                  '0 0 0 0 rgba(239, 68, 68, 0.7)',
-                  '0 0 0 10px rgba(239, 68, 68, 0)',
-                  '0 0 0 0 rgba(239, 68, 68, 0)'
-                ]
-              } : {}}
-              transition={isListening ? {
-                duration: 1.5,
-                repeat: Infinity,
-                ease: "easeOut"
-              } : {}}
+              whileHover={{ scale: voiceSupported && !interviewComplete ? 1.1 : 1 }}
+              whileTap={{ scale: voiceSupported && !interviewComplete ? 0.95 : 1 }}
             >
               <MicrophoneIcon className="w-5 h-5" />
               {isListening && (
@@ -571,19 +633,6 @@ const InterviewSession = () => {
             </motion.button>
 
             <motion.button
-              onClick={() => setIsPaused(!isPaused)}
-              className="w-14 h-14 rounded-full flex items-center justify-center transition-all duration-200"
-              style={{
-                background: 'linear-gradient(135deg, hsl(189 95% 50%), hsl(217 91% 60%))',
-                color: 'hsl(0 0% 100%)'
-              }}
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              {isPaused ? <PlayIcon className="w-6 h-6" /> : <PauseIcon className="w-6 h-6" />}
-            </motion.button>
-
-            <motion.button
               className="w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200"
               style={{
                 backgroundColor: 'hsl(222 25% 10%)',
@@ -596,7 +645,7 @@ const InterviewSession = () => {
             </motion.button>
 
             <motion.button
-              onClick={() => navigate('/interview-config')}
+              onClick={handleEndInterview}
               className="w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200"
               style={{
                 backgroundColor: 'hsl(0 80% 60%)',
@@ -624,7 +673,6 @@ const InterviewSession = () => {
               exit={{ x: 340 }}
               transition={{ type: "spring", damping: 20 }}
             >
-              {/* Chat Header */}
               <div className="p-4 border-b flex items-center justify-between" style={{ borderColor: 'hsl(222 20% 15%)' }}>
                 <h3 className="font-medium" style={{ color: 'hsl(0 0% 100%)' }}>
                   Conversation Log
@@ -638,8 +686,17 @@ const InterviewSession = () => {
                 </button>
               </div>
 
-              {/* Messages */}
               <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                {messages.length === 0 && !isLoading && (
+                  <div className="text-center text-gray-400 py-8">
+                    Click start to begin your interview
+                  </div>
+                )}
+                {isLoading && messages.length === 0 && (
+                  <div className="text-center text-gray-400 py-8">
+                    Loading your interview...
+                  </div>
+                )}
                 {messages.map((message, index) => (
                   <motion.div
                     key={index}
@@ -651,7 +708,7 @@ const InterviewSession = () => {
                     <div
                       className={`max-w-[80%] p-3 rounded-lg ${
                         message.role === 'user' ? 'rounded-br-none' : 'rounded-bl-none'
-                      }`}
+                      } ${message.isThinking ? 'opacity-70' : ''}`}
                       style={{
                         backgroundColor: message.role === 'user'
                           ? 'hsl(217 91% 60% / 0.2)'
@@ -659,14 +716,21 @@ const InterviewSession = () => {
                         color: 'hsl(0 0% 100%)'
                       }}
                     >
-                      <p className="text-sm leading-relaxed">{message.text}</p>
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                        {message.isThinking ? (
+                          <span className="flex items-center gap-1">
+                            Thinking<span className="animate-pulse">.</span><span className="animate-pulse delay-100">.</span><span className="animate-pulse delay-200">.</span>
+                          </span>
+                        ) : (
+                          message.text
+                        )}
+                      </p>
                     </div>
                   </motion.div>
                 ))}
                 <div ref={chatEndRef} />
               </div>
 
-              {/* Chat Input */}
               <div className="p-4 border-t" style={{ borderColor: 'hsl(222 20% 15%)' }}>
                 {!voiceSupported && (
                   <div className="mb-3 p-2 rounded-lg flex items-start gap-2" style={{ backgroundColor: 'hsl(45 100% 50% / 0.1)', border: '1px solid hsl(45 100% 50% / 0.3)' }}>
@@ -688,13 +752,16 @@ const InterviewSession = () => {
                         }
                       }}
                       onKeyDown={handleKeyDown}
-                      placeholder={isListening ? "Listening..." : "Type or speak your answer..."}
+                      disabled={interviewComplete}
+                      placeholder={interviewComplete ? "Interview complete" : (isListening ? "Listening..." : "Type or speak your answer...")}
                       className="w-full px-4 py-2 rounded-lg text-sm outline-none transition-all duration-200"
                       style={{
                         backgroundColor: isListening ? 'hsl(0 80% 60% / 0.1)' : 'hsl(222 30% 6%)',
                         color: 'hsl(0 0% 100%)',
                         border: isListening ? '1px solid hsl(0 80% 60%)' : '1px solid hsl(222 20% 15%)',
-                        paddingRight: isListening ? '40px' : '16px'
+                        paddingRight: isListening ? '40px' : '16px',
+                        opacity: interviewComplete ? 0.5 : 1,
+                        cursor: interviewComplete ? 'not-allowed' : 'text'
                       }}
                     />
                     {isListening && (
@@ -720,45 +787,33 @@ const InterviewSession = () => {
                   </div>
                   <motion.button
                     onClick={toggleVoiceRecognition}
-                    disabled={!voiceSupported}
+                    disabled={!voiceSupported || interviewComplete}
                     className="w-10 h-10 rounded-lg flex items-center justify-center relative"
                     style={{
                       backgroundColor: isListening ? 'hsl(0 80% 60%)' : 'hsl(222 25% 10%)',
                       color: 'hsl(0 0% 100%)',
-                      opacity: voiceSupported ? 1 : 0.5,
-                      cursor: voiceSupported ? 'pointer' : 'not-allowed'
+                      opacity: voiceSupported && !interviewComplete ? 1 : 0.5,
+                      cursor: voiceSupported && !interviewComplete ? 'pointer' : 'not-allowed'
                     }}
-                    whileHover={{ scale: voiceSupported ? 1.05 : 1 }}
-                    whileTap={{ scale: voiceSupported ? 0.95 : 1 }}
-                    animate={isListening ? {
-                      boxShadow: [
-                        '0 0 0 0 rgba(239, 68, 68, 0.7)',
-                        '0 0 0 8px rgba(239, 68, 68, 0)',
-                        '0 0 0 0 rgba(239, 68, 68, 0)'
-                      ]
-                    } : {}}
-                    transition={isListening ? {
-                      duration: 1.5,
-                      repeat: Infinity,
-                      ease: "easeOut"
-                    } : {}}
+                    whileHover={{ scale: voiceSupported && !interviewComplete ? 1.05 : 1 }}
+                    whileTap={{ scale: voiceSupported && !interviewComplete ? 0.95 : 1 }}
                   >
                     <MicrophoneIcon className="w-5 h-5" />
                   </motion.button>
                   <motion.button
                     onClick={handleSend}
-                    disabled={!displayText.trim()}
+                    disabled={!displayText.trim() || interviewComplete}
                     className="w-10 h-10 rounded-lg flex items-center justify-center"
                     style={{
-                      background: displayText.trim() 
+                      background: displayText.trim() && !interviewComplete
                         ? 'linear-gradient(135deg, hsl(189 95% 50%), hsl(217 91% 60%))'
                         : 'hsl(222 25% 10%)',
                       color: 'hsl(0 0% 100%)',
-                      opacity: displayText.trim() ? 1 : 0.5,
-                      cursor: displayText.trim() ? 'pointer' : 'not-allowed'
+                      opacity: displayText.trim() && !interviewComplete ? 1 : 0.5,
+                      cursor: displayText.trim() && !interviewComplete ? 'pointer' : 'not-allowed'
                     }}
-                    whileHover={{ scale: displayText.trim() ? 1.05 : 1 }}
-                    whileTap={{ scale: displayText.trim() ? 0.95 : 1 }}
+                    whileHover={{ scale: displayText.trim() && !interviewComplete ? 1.05 : 1 }}
+                    whileTap={{ scale: displayText.trim() && !interviewComplete ? 0.95 : 1 }}
                   >
                     <PaperAirplaneIcon className="w-5 h-5" />
                   </motion.button>
@@ -768,7 +823,7 @@ const InterviewSession = () => {
           )}
         </AnimatePresence>
 
-        {/* Chat Toggle Button (when hidden) */}
+        {/* Chat Toggle Button */}
         <AnimatePresence>
           {!showChat && (
             <motion.button
