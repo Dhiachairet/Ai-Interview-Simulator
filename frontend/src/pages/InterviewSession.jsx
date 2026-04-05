@@ -79,7 +79,7 @@ const useVoiceRecognition = () => {
           setIsListening(false);
           break;
         case 'network':
-          console.info('Speech recognition network error. Voice recognition requires an internet connection.');
+          console.info('Speech recognition network error.');
           setIsListening(false);
           break;
         case 'no-speech':
@@ -207,10 +207,13 @@ const InterviewSession = () => {
   const location = useLocation();
   const chatEndRef = useRef(null);
   
+  // Check if we're resuming an interview
+  const isResuming = !!location.state?.resumeId;
+  
   const sessionDetails = location.state || {
     role: 'Frontend Developer',
     style: 'Strict Technical',
-    difficulty: 'Hard'
+    difficulty: 'Medium'
   };
 
   // Voice recognition hook
@@ -225,18 +228,32 @@ const InterviewSession = () => {
     resetTranscript
   } = useVoiceRecognition();
 
-  const [isLoading, setIsLoading] = useState(false);
+  const [interviewId, setInterviewId] = useState(location.state?.resumeId || null);
+  const [isLoading, setIsLoading] = useState(!isResuming); // Don't show loading if resuming
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isVideoOn, setIsVideoOn] = useState(true);
   const [showChat, setShowChat] = useState(true);
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState("");
   const [currentQuestionText, setCurrentQuestionText] = useState("");
-  const [currentQuestionNumber, setCurrentQuestionNumber] = useState(0);
+  const [currentQuestionNumber, setCurrentQuestionNumber] = useState(1);
   const [totalQuestions] = useState(5);
   const [showError, setShowError] = useState(false);
   const [interviewComplete, setInterviewComplete] = useState(false);
+  const [elapsedTime, setElapsedTime] = useState(0);
   
   const progress = (currentQuestionNumber / totalQuestions) * 100;
+
+  // Timer for interview duration
+  useEffect(() => {
+    let timer;
+    if (!interviewComplete && currentQuestionNumber > 0 && messages.length > 0) {
+      timer = setInterval(() => {
+        setElapsedTime(prev => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [interviewComplete, currentQuestionNumber, messages.length]);
 
   // Update input text when transcript changes
   useEffect(() => {
@@ -266,12 +283,75 @@ const InterviewSession = () => {
     scrollToBottom();
   }, [messages]);
 
-  // Start interview when component mounts
-  useEffect(() => {
-    startInterview();
-  }, []);
+  // Format time as MM:SS
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
-  const startInterview = async () => {
+  // Load existing interview if resuming
+  const loadExistingInterview = async () => {
+    if (!isResuming) return;
+    
+    setIsLoading(true);
+    try {
+      const response = await interviewService.getInterviewById(location.state.resumeId);
+      if (response.success) {
+        const interviewData = response.data;
+        
+        // Calculate current question number (answered questions + 1)
+        const answeredQuestions = interviewData.questions.filter(q => q.userAnswer).length;
+        const currentQIndex = answeredQuestions;
+        const currentQ = interviewData.questions[currentQIndex];
+        
+        setInterviewId(interviewData._id);
+        setCurrentQuestionNumber(currentQIndex + 1);
+        setCurrentQuestionText(currentQ?.question || "");
+        
+        // Build message history
+        const messageHistory = [];
+        for (let i = 0; i <= currentQIndex; i++) {
+          const q = interviewData.questions[i];
+          if (q?.question) {
+            messageHistory.push({ 
+              role: "ai", 
+              text: q.question,
+              timestamp: new Date().toLocaleTimeString()
+            });
+          }
+          if (q?.userAnswer) {
+            messageHistory.push({ 
+              role: "user", 
+              text: q.userAnswer,
+              timestamp: new Date().toLocaleTimeString()
+            });
+          }
+          if (q?.feedback && q.userAnswer) {
+            messageHistory.push({ 
+              role: "ai", 
+              text: `📊 **Feedback:** ${q.feedback}\n\n⭐ **Score:** ${q.score}/100`,
+              timestamp: new Date().toLocaleTimeString()
+            });
+          }
+        }
+        
+        setMessages(messageHistory);
+        
+        // If all questions are answered, mark as complete
+        if (answeredQuestions >= totalQuestions) {
+          setInterviewComplete(true);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading interview:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Start new interview
+  const startNewInterview = async () => {
     setIsLoading(true);
     try {
       const response = await interviewService.startInterview({
@@ -281,12 +361,13 @@ const InterviewSession = () => {
       });
       
       if (response.success) {
-        const firstQuestion = response.question;
-        setCurrentQuestionText(firstQuestion);
+        setInterviewId(response.interviewId);
+        setCurrentQuestionText(response.question);
         setCurrentQuestionNumber(1);
         setMessages([{ 
           role: "ai", 
-          text: firstQuestion 
+          text: response.question,
+          timestamp: new Date().toLocaleTimeString()
         }]);
       } else {
         // Fallback if API fails
@@ -295,7 +376,8 @@ const InterviewSession = () => {
         setCurrentQuestionNumber(1);
         setMessages([{ 
           role: "ai", 
-          text: fallbackQuestion 
+          text: fallbackQuestion,
+          timestamp: new Date().toLocaleTimeString()
         }]);
       }
     } catch (error) {
@@ -305,32 +387,51 @@ const InterviewSession = () => {
       setCurrentQuestionNumber(1);
       setMessages([{ 
         role: "ai", 
-        text: fallbackQuestion 
+        text: fallbackQuestion,
+        timestamp: new Date().toLocaleTimeString()
       }]);
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Initialize interview on mount
+  useEffect(() => {
+    if (isResuming) {
+      loadExistingInterview();
+    } else {
+      startNewInterview();
+    }
+  }, []);
+
   const handleSend = async () => {
     const textToSend = inputText.trim();
-    if (!textToSend || interviewComplete) return;
+    if (!textToSend || interviewComplete || isSubmitting) return;
+    
+    setIsSubmitting(true);
     
     // Add user message
-    setMessages(prev => [...prev, { role: "user", text: textToSend }]);
+    setMessages(prev => [...prev, { 
+      role: "user", 
+      text: textToSend,
+      timestamp: new Date().toLocaleTimeString()
+    }]);
     setInputText("");
     resetTranscript();
     
     // Add thinking indicator
-    setMessages(prev => [...prev, { role: "ai", text: "...", isThinking: true }]);
+    setMessages(prev => [...prev, { 
+      role: "ai", 
+      text: "...", 
+      isThinking: true,
+      timestamp: new Date().toLocaleTimeString()
+    }]);
     
     try {
       const isComplete = currentQuestionNumber >= totalQuestions;
       
       const response = await interviewService.submitAnswer({
-        jobRole: sessionDetails.role,
-        personality: sessionDetails.style,
-        difficulty: sessionDetails.difficulty,
+        interviewId: interviewId,
         currentQuestion: currentQuestionText,
         userAnswer: textToSend,
         questionNumber: currentQuestionNumber,
@@ -342,24 +443,37 @@ const InterviewSession = () => {
       
       if (response.success) {
         // Add AI feedback
+        const score = response.evaluation.score;
+        let scoreEmoji = '📊';
+        if (score >= 80) scoreEmoji = '🌟';
+        else if (score >= 60) scoreEmoji = '👍';
+        else scoreEmoji = '💪';
+        
         setMessages(prev => [...prev, { 
           role: "ai", 
-          text: `📊 **Feedback:** ${response.evaluation.feedback}\n\n⭐ **Score:** ${response.evaluation.score}/100\n\n💪 **Strengths:** ${response.evaluation.strengths?.join(', ') || 'Good effort'}\n\n🎯 **Improvements:** ${response.evaluation.improvements?.join(', ') || 'Keep practicing'}` 
+          text: `${scoreEmoji} **Feedback:** ${response.evaluation.feedback}\n\n⭐ **Score:** ${score}/100\n\n💪 **Strengths:** ${response.evaluation.strengths?.join(', ') || 'Good effort'}\n\n🎯 **Areas to Improve:** ${response.evaluation.improvements?.join(', ') || 'Keep practicing'}`,
+          timestamp: new Date().toLocaleTimeString()
         }]);
         
         if (response.nextQuestion && !response.isComplete) {
           // Add next question after a delay
           setTimeout(() => {
-            setMessages(prev => [...prev, { role: "ai", text: response.nextQuestion }]);
+            setMessages(prev => [...prev, { 
+              role: "ai", 
+              text: response.nextQuestion,
+              timestamp: new Date().toLocaleTimeString()
+            }]);
             setCurrentQuestionText(response.nextQuestion);
             setCurrentQuestionNumber(prev => prev + 1);
           }, 2000);
         } else if (response.isComplete || (!response.nextQuestion && currentQuestionNumber >= totalQuestions)) {
           setInterviewComplete(true);
+          
           setTimeout(() => {
             setMessages(prev => [...prev, { 
               role: "ai", 
-              text: "🎉 **Interview Complete!** 🎉\n\nThank you for participating in this interview practice session.\n\nYour responses have been recorded. You can now return to the dashboard to view your progress and start new interviews.\n\nKeep practicing to improve your scores!" 
+              text: `🎉 **Interview Complete!** 🎉\n\n📈 **Final Score:** Calculated\n⏱️ **Duration:** ${formatTime(elapsedTime)}\n\nThank you for participating in this interview practice session.\n\nYour responses have been saved. You can now return to the dashboard to view your progress and start new interviews.\n\nKeep practicing to improve your scores! 🚀`,
+              timestamp: new Date().toLocaleTimeString()
             }]);
           }, 1000);
         }
@@ -369,13 +483,16 @@ const InterviewSession = () => {
       setMessages(prev => prev.filter(msg => !msg.isThinking));
       setMessages(prev => [...prev, { 
         role: "ai", 
-        text: "Sorry, I encountered an error processing your answer. Please try again." 
+        text: "Sorry, I encountered an error processing your answer. Please try again.",
+        timestamp: new Date().toLocaleTimeString()
       }]);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !isSubmitting && !interviewComplete) {
       e.preventDefault();
       handleSend();
     }
@@ -392,7 +509,9 @@ const InterviewSession = () => {
   };
 
   const handleEndInterview = () => {
-    navigate('/interview-config');
+    if (window.confirm('Are you sure you want to end this interview? Your progress will be saved.')) {
+      navigate('/history');
+    }
   };
 
   // Combined text for display
@@ -412,10 +531,10 @@ const InterviewSession = () => {
           </button>
           <div>
             <h1 className="text-sm font-medium" style={{ color: 'hsl(0 0% 100%)' }}>
-              {sessionDetails.role} Interview
+              {isResuming ? (sessionDetails.role || 'Interview') : sessionDetails.role} {isResuming && '(Resumed)'}
             </h1>
             <p className="text-xs" style={{ color: 'hsl(222 10% 50%)' }}>
-              {sessionDetails.style} • {sessionDetails.difficulty}
+              {sessionDetails.style || 'Interview'} • {sessionDetails.difficulty || 'Medium'}
             </p>
           </div>
         </div>
@@ -427,7 +546,7 @@ const InterviewSession = () => {
           <div className="flex items-center gap-2">
             <ClockIcon className="w-4 h-4" style={{ color: 'hsl(222 10% 60%)' }} />
             <span className="text-sm font-mono" style={{ color: 'hsl(0 0% 100%)' }}>
-              {new Date().toLocaleTimeString()}
+              {formatTime(elapsedTime)}
             </span>
           </div>
         </div>
@@ -524,7 +643,7 @@ const InterviewSession = () => {
                 </div>
 
                 <div className="mt-8">
-                  <VoiceWave active={!interviewComplete && !isLoading} color="bg-cyan-500" />
+                  <VoiceWave active={!interviewComplete && !isLoading && !isSubmitting} color="bg-cyan-500" />
                 </div>
               </div>
             </motion.div>
@@ -587,7 +706,7 @@ const InterviewSession = () => {
                   Current Question
                 </p>
                 <p className="text-sm leading-relaxed" style={{ color: 'hsl(0 0% 100%)' }}>
-                  {isLoading ? "Loading your first question..." : currentQuestionText || "Click start to begin"}
+                  {isLoading ? "Loading..." : currentQuestionText || "Interview complete!"}
                 </p>
               </div>
             </div>
@@ -597,7 +716,7 @@ const InterviewSession = () => {
           <div className="mt-4 flex items-center justify-center gap-3 flex-shrink-0">
             <motion.button
               onClick={toggleVoiceRecognition}
-              disabled={!voiceSupported || interviewComplete}
+              disabled={!voiceSupported || interviewComplete || isSubmitting}
               className="w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 relative"
               style={{
                 backgroundColor: isListening ? 'hsl(0 80% 60%)' : 'hsl(222 25% 10%)',
@@ -689,7 +808,7 @@ const InterviewSession = () => {
               <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
                 {messages.length === 0 && !isLoading && (
                   <div className="text-center text-gray-400 py-8">
-                    Click start to begin your interview
+                    {isResuming ? "Loading your interview..." : "Click start to begin your interview"}
                   </div>
                 )}
                 {isLoading && messages.length === 0 && (
@@ -725,6 +844,9 @@ const InterviewSession = () => {
                           message.text
                         )}
                       </p>
+                      {message.timestamp && !message.isThinking && (
+                        <p className="text-xs mt-1 opacity-50">{message.timestamp}</p>
+                      )}
                     </div>
                   </motion.div>
                 ))}
@@ -752,7 +874,7 @@ const InterviewSession = () => {
                         }
                       }}
                       onKeyDown={handleKeyDown}
-                      disabled={interviewComplete}
+                      disabled={interviewComplete || isSubmitting || isLoading}
                       placeholder={interviewComplete ? "Interview complete" : (isListening ? "Listening..." : "Type or speak your answer...")}
                       className="w-full px-4 py-2 rounded-lg text-sm outline-none transition-all duration-200"
                       style={{
@@ -760,8 +882,8 @@ const InterviewSession = () => {
                         color: 'hsl(0 0% 100%)',
                         border: isListening ? '1px solid hsl(0 80% 60%)' : '1px solid hsl(222 20% 15%)',
                         paddingRight: isListening ? '40px' : '16px',
-                        opacity: interviewComplete ? 0.5 : 1,
-                        cursor: interviewComplete ? 'not-allowed' : 'text'
+                        opacity: interviewComplete || isLoading ? 0.5 : 1,
+                        cursor: interviewComplete || isLoading ? 'not-allowed' : 'text'
                       }}
                     />
                     {isListening && (
@@ -787,35 +909,39 @@ const InterviewSession = () => {
                   </div>
                   <motion.button
                     onClick={toggleVoiceRecognition}
-                    disabled={!voiceSupported || interviewComplete}
+                    disabled={!voiceSupported || interviewComplete || isSubmitting || isLoading}
                     className="w-10 h-10 rounded-lg flex items-center justify-center relative"
                     style={{
                       backgroundColor: isListening ? 'hsl(0 80% 60%)' : 'hsl(222 25% 10%)',
                       color: 'hsl(0 0% 100%)',
-                      opacity: voiceSupported && !interviewComplete ? 1 : 0.5,
-                      cursor: voiceSupported && !interviewComplete ? 'pointer' : 'not-allowed'
+                      opacity: voiceSupported && !interviewComplete && !isLoading ? 1 : 0.5,
+                      cursor: voiceSupported && !interviewComplete && !isLoading ? 'pointer' : 'not-allowed'
                     }}
-                    whileHover={{ scale: voiceSupported && !interviewComplete ? 1.05 : 1 }}
-                    whileTap={{ scale: voiceSupported && !interviewComplete ? 0.95 : 1 }}
+                    whileHover={{ scale: voiceSupported && !interviewComplete && !isLoading ? 1.05 : 1 }}
+                    whileTap={{ scale: voiceSupported && !interviewComplete && !isLoading ? 0.95 : 1 }}
                   >
                     <MicrophoneIcon className="w-5 h-5" />
                   </motion.button>
                   <motion.button
                     onClick={handleSend}
-                    disabled={!displayText.trim() || interviewComplete}
+                    disabled={!displayText.trim() || interviewComplete || isSubmitting || isLoading}
                     className="w-10 h-10 rounded-lg flex items-center justify-center"
                     style={{
-                      background: displayText.trim() && !interviewComplete
+                      background: displayText.trim() && !interviewComplete && !isSubmitting && !isLoading
                         ? 'linear-gradient(135deg, hsl(189 95% 50%), hsl(217 91% 60%))'
                         : 'hsl(222 25% 10%)',
                       color: 'hsl(0 0% 100%)',
-                      opacity: displayText.trim() && !interviewComplete ? 1 : 0.5,
-                      cursor: displayText.trim() && !interviewComplete ? 'pointer' : 'not-allowed'
+                      opacity: displayText.trim() && !interviewComplete && !isSubmitting && !isLoading ? 1 : 0.5,
+                      cursor: displayText.trim() && !interviewComplete && !isSubmitting && !isLoading ? 'pointer' : 'not-allowed'
                     }}
-                    whileHover={{ scale: displayText.trim() && !interviewComplete ? 1.05 : 1 }}
-                    whileTap={{ scale: displayText.trim() && !interviewComplete ? 0.95 : 1 }}
+                    whileHover={{ scale: displayText.trim() && !interviewComplete && !isSubmitting && !isLoading ? 1.05 : 1 }}
+                    whileTap={{ scale: displayText.trim() && !interviewComplete && !isSubmitting && !isLoading ? 0.95 : 1 }}
                   >
-                    <PaperAirplaneIcon className="w-5 h-5" />
+                    {isSubmitting ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <PaperAirplaneIcon className="w-5 h-5" />
+                    )}
                   </motion.button>
                 </div>
               </div>
@@ -880,6 +1006,25 @@ const InterviewSession = () => {
                   />
                 ))}
               </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Submitting Indicator */}
+        <AnimatePresence>
+          {isSubmitting && !isListening && (
+            <motion.div
+              className="fixed bottom-24 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full flex items-center gap-2 shadow-xl z-50"
+              style={{
+                backgroundColor: 'hsl(217 91% 60%)',
+                color: 'hsl(0 0% 100%)'
+              }}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+            >
+              <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <span className="text-xs font-medium">Analyzing your answer...</span>
             </motion.div>
           )}
         </AnimatePresence>
