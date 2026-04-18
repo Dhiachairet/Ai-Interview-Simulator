@@ -25,11 +25,12 @@ import { useNavigate, useLocation } from 'react-router-dom';
 // Voice Recognition Hook
 const useVoiceRecognition = () => {
   const [isListening, setIsListening] = useState(false);
-  const [transcript, setTranscript] = useState('');
   const [interimTranscript, setInterimTranscript] = useState('');
   const [error, setError] = useState(null);
   const [supported, setSupported] = useState(true);
   
+  // Callback to parent to update final text
+  const onResultRef = useRef(null);
   const recognitionRef = useRef(null);
 
   useEffect(() => {
@@ -47,6 +48,11 @@ const useVoiceRecognition = () => {
     recognition.lang = 'en-US';
     recognition.maxAlternatives = 1;
 
+    recognition.onstart = () => {
+      console.log('🎤 Speech recognition started');
+      setIsListening(true);
+    };
+
     recognition.onresult = (event) => {
       let interimText = '';
       let finalText = '';
@@ -62,14 +68,14 @@ const useVoiceRecognition = () => {
         }
       }
 
-      if (finalText) {
-        setTranscript(prev => prev + finalText);
+      if (finalText && onResultRef.current) {
+        onResultRef.current(finalText);
       }
       setInterimTranscript(interimText);
     };
 
     recognition.onerror = (event) => {
-      console.warn('Speech recognition error:', event.error);
+      console.warn('🎤 Speech recognition error:', event.error);
       
       switch (event.error) {
         case 'audio-capture':
@@ -85,15 +91,16 @@ const useVoiceRecognition = () => {
           setIsListening(false);
           break;
         case 'no-speech':
-          setIsListening(false);
+          console.log('🎤 No speech detected yet...');
           break;
         default:
-          console.error('Speech recognition error:', event.error);
+          console.error('🎤 Speech recognition error:', event.error);
           setIsListening(false);
       }
     };
 
     recognition.onend = () => {
+      console.log('🎤 Speech recognition ended');
       setIsListening(false);
       setInterimTranscript('');
     };
@@ -107,14 +114,15 @@ const useVoiceRecognition = () => {
     };
   }, []);
 
-  const startListening = useCallback(() => {
+  const startListening = useCallback((onResultCallback) => {
     if (!supported || !recognitionRef.current) {
       return;
     }
 
+    onResultRef.current = onResultCallback;
+
     try {
       setError(null);
-      setIsListening(true);
       recognitionRef.current.start();
     } catch (err) {
       console.error('Error starting recognition:', err);
@@ -143,14 +151,12 @@ const useVoiceRecognition = () => {
   }, []);
 
   const resetTranscript = useCallback(() => {
-    setTranscript('');
     setInterimTranscript('');
     setError(null);
   }, []);
 
   return {
     isListening,
-    transcript,
     interimTranscript,
     error,
     supported,
@@ -371,7 +377,6 @@ const InterviewSession = () => {
   // Voice recognition hook
   const {
     isListening,
-    transcript,
     interimTranscript,
     error: voiceError,
     supported: voiceSupported,
@@ -438,14 +443,22 @@ const InterviewSession = () => {
     }
   }, [messages, speak, audioEnabled, speaking, sessionDetails.style, lastSpokenMessage]);
 
-  // Update input text when transcript changes
+  // Automatically start listening for user's voice after AI speaks a question
   useEffect(() => {
-    if (transcript) {
-      setInputText(transcript);
+    // If the interview is loaded, not currently submitting, not completed, and the AI is NOT speaking
+    if (!isLoading && !speaking && !isSubmitting && !interviewComplete) {
+      // If we are not already listening, let's start automatically!
+      if (!isListening && voiceSupported && !voiceError) {
+        const timer = setTimeout(() => {
+          startListening((text) => {
+            setInputText(prev => prev + (prev.endsWith(' ') || prev === '' ? '' : ' ') + text);
+          });
+        }, 1000); // Wait 1 second after AI finishes to start mic
+        return () => clearTimeout(timer);
+      }
     }
-  }, [transcript]);
+  }, [speaking, isLoading, isSubmitting, interviewComplete, isListening, voiceSupported, voiceError, startListening]);
 
-  // Show error toast
   useEffect(() => {
     if (voiceError) {
       setShowError(true);
@@ -593,9 +606,30 @@ const InterviewSession = () => {
     }
   }, []);
 
+  // Automatically start listening for user's voice after AI speaks a question
+  useEffect(() => {
+    // If the interview is loaded, not currently submitting, not completed, and the AI is NOT speaking
+    if (!isLoading && !speaking && !isSubmitting && !interviewComplete) {
+      // If we are not already listening, let's start automatically!
+      if (!isListening && voiceSupported && !voiceError) {
+        const timer = setTimeout(() => {
+          startListening((text) => {
+            setInputText(prev => prev + (prev.endsWith(' ') || prev === '' ? '' : ' ') + text);
+          });
+        }, 1000); // Wait 1 second after AI finishes to start mic
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [speaking, isLoading, isSubmitting, interviewComplete, voiceSupported, voiceError, startListening]);
+
   const handleSend = async () => {
     const textToSend = inputText.trim();
     if (!textToSend || interviewComplete || isSubmitting) return;
+    
+    // Stop recognition if it's running before sending
+    if (isListening) {
+      stopListening();
+    }
     
     setIsSubmitting(true);
     
@@ -702,8 +736,9 @@ const InterviewSession = () => {
       stopListening();
     } else {
       resetTranscript();
-      setInputText("");
-      startListening();
+      startListening((text) => {
+        setInputText(prev => prev + (prev.endsWith(' ') || prev === '' ? '' : ' ') + text);
+      });
     }
   };
 

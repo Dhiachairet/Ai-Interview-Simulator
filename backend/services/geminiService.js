@@ -8,11 +8,9 @@ if (!process.env.GEMINI_API_KEY) {
 }
 
 const MODEL_NAMES = [
-  'gemini-2.0-flash-exp',      
-  'gemini-1.5-flash',          
-  'gemini-2.5-flash-lite',     
-  'gemini-1.5-flash-8b',       
-  'gemini-2.0-flash-lite-preview-02-05' 
+          
+  'gemini-2.5-flash',     
+  
 ];
 
 let currentModelIndex = 0;
