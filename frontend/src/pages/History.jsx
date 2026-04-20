@@ -15,7 +15,8 @@ import {
   CalendarIcon,
   TrophyIcon,
   SparklesIcon,
-  ArrowPathIcon
+  ArrowPathIcon,
+  TrashIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -25,14 +26,14 @@ const History = () => {
   const { user, logout } = useAuth();
   const [interviews, setInterviews] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [resumingId, setResumingId] = useState(null);
+  const [error, setError] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
   const navigationItems = [
     { name: 'Dashboard', icon: <HomeIcon className="h-5 w-5" />, path: '/' },
     { name: 'New Interview', icon: <PlayIcon className="h-5 w-5" />, path: '/interview-config' },
     { name: 'History', icon: <ClockIcon className="h-5 w-5" />, path: '/history', active: true },
     { name: 'Reports', icon: <ChartBarIcon className="h-5 w-5" />, path: '/reports' },
-    { name: 'Admin', icon: <Cog6ToothIcon className="h-5 w-5" />, path: '/admin' }
   ];
 
   useEffect(() => {
@@ -41,12 +42,50 @@ const History = () => {
 
   const fetchHistory = async () => {
     try {
+      setLoading(true);
       const response = await api.get('/api/interview/history');
+      console.log('API Response:', response.data);
+      
       if (response.data.success) {
-        setInterviews(response.data.data);
+        // Transform the data to ensure consistent format
+        const formattedInterviews = response.data.data.map(interview => {
+          // Calculate if completed (has answers or has overallScore)
+          const hasAnswers = interview.questions?.some(q => q.userAnswer);
+          const hasScore = interview.report?.overallScore > 0;
+          const isActuallyCompleted = hasAnswers || hasScore || interview.status === 'completed';
+          
+          // Get the score from various possible locations
+          let score = 0;
+          if (interview.report?.overallScore) {
+            score = interview.report.overallScore;
+          } else if (interview.questions?.length > 0) {
+            // Calculate average from question scores
+            const scores = interview.questions.filter(q => q.score).map(q => q.score);
+            if (scores.length > 0) {
+              score = scores.reduce((a, b) => a + b, 0) / scores.length;
+            }
+          }
+          
+          return {
+            ...interview,
+            displayScore: Math.round(score),
+            displayStatus: isActuallyCompleted ? 'completed' : 'in-progress',
+            questionCount: interview.questions?.length || 0,
+            answeredCount: interview.questions?.filter(q => q.userAnswer).length || 0
+          };
+        });
+        
+        // Sort by date (newest first)
+        formattedInterviews.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        
+        setInterviews(formattedInterviews);
+        setError(null);
+      } else {
+        setError('Failed to load interview history');
       }
     } catch (error) {
       console.error('Error fetching history:', error);
+      setError(error.response?.data?.error || 'Failed to load interview history');
     } finally {
       setLoading(false);
     }
@@ -58,18 +97,21 @@ const History = () => {
   };
 
   const getScoreColor = (score) => {
+    if (!score || score === 0) return 'text-gray-400';
     if (score >= 80) return 'text-green-400';
     if (score >= 60) return 'text-yellow-400';
     return 'text-red-400';
   };
 
   const getScoreBg = (score) => {
+    if (!score || score === 0) return 'bg-gray-500/20 border-gray-500/30';
     if (score >= 80) return 'bg-green-500/20 border-green-500/30';
     if (score >= 60) return 'bg-yellow-500/20 border-yellow-500/30';
     return 'bg-red-500/20 border-red-500/30';
   };
 
   const formatDate = (dateString) => {
+    if (!dateString) return 'Unknown date';
     const date = new Date(dateString);
     const now = new Date();
     const diffTime = Math.abs(now - date);
@@ -80,59 +122,63 @@ const History = () => {
     return date.toLocaleDateString();
   };
 
-  const handleResumeInterview = async (interview) => {
-    setResumingId(interview._id);
-    try {
-      // Fetch the full interview details to get the current state
-      const response = await api.get(`/api/interview/${interview._id}`);
-      if (response.data.success) {
-        const interviewData = response.data.data;
-        // Calculate current question number (answers given + 1)
-        const answeredQuestions = interviewData.questions.filter(q => q.userAnswer).length;
-        const currentQuestion = interviewData.questions[answeredQuestions];
-        
-        navigate('/interview-session', { 
-          state: { 
-            resumeId: interview._id,
-            role: interview.jobRole,
-            style: interview.personality,
-            difficulty: interview.difficulty,
-            currentQuestionNumber: answeredQuestions + 1,
-            currentQuestionText: currentQuestion?.question,
-            existingMessages: interviewData.questions
-              .filter(q => q.question)
-              .flatMap((q, idx) => [
-                { role: "ai", text: q.question, timestamp: new Date().toLocaleTimeString() },
-                ...(q.userAnswer ? [{ role: "user", text: q.userAnswer, timestamp: new Date().toLocaleTimeString() }] : [])
-              ])
-          }
-        });
-      }
-    } catch (error) {
-      console.error('Error resuming interview:', error);
-    } finally {
-      setResumingId(null);
-    }
+  const handleViewReport = (interviewId) => {
+    navigate(`/interview-report/${interviewId}`);
   };
 
   const handleDeleteInterview = async (interviewId, e) => {
     e.stopPropagation();
     if (window.confirm('Are you sure you want to delete this interview? This action cannot be undone.')) {
+      setDeletingId(interviewId);
       try {
         await api.delete(`/api/interview/${interviewId}`);
-        fetchHistory(); // Refresh the list
+        await fetchHistory(); // Refresh the list
       } catch (error) {
         console.error('Error deleting interview:', error);
+        alert('Failed to delete interview');
+      } finally {
+        setDeletingId(null);
       }
     }
   };
 
+  const handleStartNewInterview = () => {
+    navigate('/interview-config');
+  };
+
   // Calculate stats
-  const completedInterviews = interviews.filter(i => i.status === 'completed');
-  const inProgressInterviews = interviews.filter(i => i.status === 'in-progress');
+  const completedInterviews = interviews.filter(i => i.displayStatus === 'completed');
+  const inProgressInterviews = interviews.filter(i => i.displayStatus === 'in-progress');
   const avgScore = completedInterviews.length > 0
-    ? Math.round(completedInterviews.reduce((acc, i) => acc + (i.report?.overallScore || 0), 0) / completedInterviews.length)
+    ? Math.round(completedInterviews.reduce((acc, i) => acc + (i.displayScore || 0), 0) / completedInterviews.length)
     : 0;
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 bg-[#0A0F1E] flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-gray-400 mt-4">Loading your interview history...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="fixed inset-0 bg-[#0A0F1E] flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-red-400 text-xl mb-4">⚠️ {error}</div>
+          <button
+            onClick={fetchHistory}
+            className="px-4 py-2 bg-blue-500 rounded-lg text-white hover:bg-blue-600"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-[#0A0F1E] text-white flex overflow-hidden">
@@ -150,7 +196,6 @@ const History = () => {
         transition={{ duration: 0.5 }}
         className="w-64 border-r border-white/10 bg-white/5 backdrop-blur-xl flex flex-col relative z-10 flex-shrink-0"
       >
-        {/* Logo */}
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center space-x-3">
             <div className="p-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg">
@@ -162,7 +207,6 @@ const History = () => {
           </div>
         </div>
 
-        {/* Navigation */}
         <nav className="flex-1 p-4 space-y-2">
           {navigationItems.map((item, index) => (
             <motion.button
@@ -183,7 +227,6 @@ const History = () => {
           ))}
         </nav>
 
-        {/* User Profile */}
         <div className="p-4 border-t border-white/10">
           <div className="bg-white/5 rounded-xl p-4 mb-3">
             <div className="flex items-center space-x-3 mb-3">
@@ -228,12 +271,15 @@ const History = () => {
               Interview History
             </h1>
             <p className="text-gray-400 text-lg">
-              Review your past interviews or continue where you left off
+              Review your past interviews and track your progress
+            </p>
+            <p className="text-gray-500 text-sm mt-1">
+              {interviews.length} total interviews • {completedInterviews.length} completed • {inProgressInterviews.length} in progress
             </p>
           </motion.div>
 
           {/* Stats Summary */}
-          {!loading && interviews.length > 0 && (
+          {interviews.length > 0 && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -291,7 +337,7 @@ const History = () => {
           )}
 
           {/* In Progress Section */}
-          {!loading && inProgressInterviews.length > 0 && (
+          {inProgressInterviews.length > 0 && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -300,7 +346,7 @@ const History = () => {
             >
               <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
                 <PlayIcon className="h-6 w-6 text-yellow-400" />
-                Continue Where You Left Off
+                In Progress ({inProgressInterviews.length})
               </h2>
               <div className="grid gap-4">
                 {inProgressInterviews.map((interview, index) => (
@@ -309,7 +355,7 @@ const History = () => {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.1 }}
-                    className="bg-gradient-to-r from-yellow-500/10 to-orange-500/10 backdrop-blur-xl border border-yellow-500/30 rounded-2xl p-6 hover:bg-yellow-500/15 transition-all duration-300"
+                    className="bg-gradient-to-r from-yellow-500/10 to-orange-500/10 backdrop-blur-xl border border-yellow-500/30 rounded-2xl p-6"
                   >
                     <div className="flex justify-between items-start flex-wrap gap-4">
                       <div className="flex-1">
@@ -318,7 +364,7 @@ const History = () => {
                             {interview.jobRole}
                           </h3>
                           <div className="px-3 py-1 rounded-full text-sm font-medium bg-yellow-500/20 border border-yellow-500/30 text-yellow-400">
-                            In Progress
+                            {interview.questionCount > 0 ? `${interview.answeredCount}/${interview.questionCount} Questions` : 'Not Started'}
                           </div>
                         </div>
                         
@@ -340,10 +386,6 @@ const History = () => {
                             <ClockIcon className="h-4 w-4" />
                             <span>{new Date(interview.createdAt).toLocaleTimeString()}</span>
                           </div>
-                          <div className="flex items-center gap-1 text-yellow-400">
-                            <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></div>
-                            <span className="text-xs">Ready to continue</span>
-                          </div>
                         </div>
                       </div>
                       
@@ -351,29 +393,22 @@ const History = () => {
                         <motion.button
                           whileHover={{ scale: 1.05 }}
                           whileTap={{ scale: 0.95 }}
-                          onClick={() => handleResumeInterview(interview)}
-                          disabled={resumingId === interview._id}
-                          className="px-6 py-2.5 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-lg text-white font-medium text-sm flex items-center gap-2 shadow-lg shadow-yellow-500/25"
+                          onClick={() => handleViewReport(interview._id)}
+                          className="px-6 py-2.5 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg text-white font-medium text-sm flex items-center gap-2 shadow-lg shadow-blue-500/25"
                         >
-                          {resumingId === interview._id ? (
-                            <>
-                              <ArrowPathIcon className="h-4 w-4 animate-spin" />
-                              Resuming...
-                            </>
-                          ) : (
-                            <>
-                              <PlayIcon className="h-4 w-4" />
-                              Resume Interview
-                            </>
-                          )}
+                          <DocumentTextIcon className="h-4 w-4" />
+                          View Details
                         </motion.button>
                         <button
                           onClick={(e) => handleDeleteInterview(interview._id, e)}
-                          className="p-2 rounded-lg bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition"
+                          disabled={deletingId === interview._id}
+                          className="p-2 rounded-lg bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition disabled:opacity-50"
                         >
-                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
+                          {deletingId === interview._id ? (
+                            <ArrowPathIcon className="h-5 w-5 animate-spin" />
+                          ) : (
+                            <TrashIcon className="h-5 w-5" />
+                          )}
                         </button>
                       </div>
                     </div>
@@ -384,7 +419,7 @@ const History = () => {
           )}
 
           {/* Completed Interviews Section */}
-          {!loading && completedInterviews.length > 0 && (
+          {completedInterviews.length > 0 && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -392,7 +427,7 @@ const History = () => {
             >
               <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
                 <TrophyIcon className="h-6 w-6 text-green-400" />
-                Completed Interviews
+                Completed ({completedInterviews.length})
               </h2>
               <div className="grid gap-4">
                 {completedInterviews.map((interview, index) => (
@@ -402,7 +437,7 @@ const History = () => {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.05 }}
                     whileHover={{ scale: 1.01 }}
-                    onClick={() => navigate(`/interview-report/${interview._id}`)}
+                    onClick={() => handleViewReport(interview._id)}
                     className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all duration-300 cursor-pointer group"
                   >
                     <div className="flex justify-between items-start flex-wrap gap-4">
@@ -411,9 +446,9 @@ const History = () => {
                           <h3 className="text-xl font-semibold text-white">
                             {interview.jobRole}
                           </h3>
-                          {interview.report?.overallScore && (
-                            <div className={`px-3 py-1 rounded-full text-sm font-medium ${getScoreBg(interview.report.overallScore)} border`}>
-                              Score: {Math.round(interview.report.overallScore)}%
+                          {interview.displayScore > 0 && (
+                            <div className={`px-3 py-1 rounded-full text-sm font-medium ${getScoreBg(interview.displayScore)} border`}>
+                              Score: {interview.displayScore}%
                             </div>
                           )}
                         </div>
@@ -439,6 +474,12 @@ const History = () => {
                             <ClockIcon className="h-4 w-4" />
                             <span>{new Date(interview.createdAt).toLocaleTimeString()}</span>
                           </div>
+                          {interview.answeredCount > 0 && (
+                            <div className="flex items-center gap-1">
+                              <DocumentTextIcon className="h-4 w-4" />
+                              <span>{interview.answeredCount} answers</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                       
@@ -453,16 +494,8 @@ const History = () => {
             </motion.div>
           )}
 
-          {/* Loading State */}
-          {loading && (
-            <div className="text-center text-gray-400 py-12">
-              <div className="inline-block w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-              <p className="mt-4">Loading your interview history...</p>
-            </div>
-          )}
-
           {/* Empty State */}
-          {!loading && interviews.length === 0 && (
+          {interviews.length === 0 && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -474,7 +507,7 @@ const History = () => {
               <h3 className="text-2xl font-semibold text-white mb-2">No Interviews Yet</h3>
               <p className="text-gray-400 mb-6">Start your first interview to see your history here</p>
               <button
-                onClick={() => navigate('/interview-config')}
+                onClick={handleStartNewInterview}
                 className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg text-white font-medium hover:opacity-90 transition"
               >
                 Start Your First Interview

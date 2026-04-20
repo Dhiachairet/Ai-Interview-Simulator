@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   HomeIcon,
@@ -21,6 +21,24 @@ import {
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import vapiService from '../services/vapiService';
+
+// Map UI IDs to personality names (must match ASSISTANT_IDS keys in vapiService)
+const PERSONALITY_MAP = {
+  'strict-technical': 'Strict Technical',
+  'friendly-hr': 'Friendly HR',
+  'stress-tester': 'Stress Tester',
+  'theoretical-expert': 'Theoretical Expert'
+};
+
+// Map job role IDs to display names for Vapi
+const JOB_ROLE_MAP = {
+  'hr-manager': 'HR Manager',
+  'frontend': 'Frontend Developer',
+  'backend': 'Backend Developer',
+  'product-manager': 'Product Manager',
+  'data-scientist': 'Data Scientist'
+};
 
 const InterviewConfig = () => {
   const navigate = useNavigate();
@@ -29,6 +47,47 @@ const InterviewConfig = () => {
   const [selectedStyle, setSelectedStyle] = useState(null);
   const [selectedDifficulty, setSelectedDifficulty] = useState('medium');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isStartingInterview, setIsStartingInterview] = useState(false);
+  const [vapiStatus, setVapiStatus] = useState('idle'); // idle, initializing, ready, error
+  const [vapiError, setVapiError] = useState(null);
+
+  // Initialize Vapi on component mount
+  useEffect(() => {
+    const initVapi = async () => {
+      const publicKey = import.meta.env.VITE_VAPI_PUBLIC_KEY;
+      
+      if (!publicKey) {
+        console.error('VITE_VAPI_PUBLIC_KEY not found in environment variables');
+        setVapiStatus('error');
+        setVapiError('Vapi configuration missing. Please check your environment variables.');
+        return;
+      }
+      
+      setVapiStatus('initializing');
+      
+      // Small delay to ensure Vapi service is ready
+      setTimeout(() => {
+        const initialized = vapiService.initialize(publicKey);
+        
+        if (initialized) {
+          setVapiStatus('ready');
+          console.log('Vapi service ready');
+        } else {
+          setVapiStatus('error');
+          setVapiError('Failed to initialize Vapi service');
+        }
+      }, 500);
+    };
+    
+    initVapi();
+    
+    // Cleanup on unmount
+    return () => {
+      if (vapiService.isActive()) {
+        vapiService.stopInterview();
+      }
+    };
+  }, []);
 
   const jobRoles = [
     {
@@ -108,7 +167,6 @@ const InterviewConfig = () => {
     { name: 'New Interview', icon: <PlayIcon className="h-5 w-5" />, path: '/interview-config', active: true },
     { name: 'History', icon: <ClockIcon className="h-5 w-5" />, path: '/history' },
     { name: 'Reports', icon: <ChartBarIcon className="h-5 w-5" />, path: '/reports' },
-    { name: 'Admin', icon: <Cog6ToothIcon className="h-5 w-5" />, path: '/admin' }
   ];
 
   const handleLogout = () => {
@@ -126,11 +184,90 @@ const InterviewConfig = () => {
       role: role?.title,
       style: style?.name,
       difficulty: selectedDifficulty.charAt(0).toUpperCase() + selectedDifficulty.slice(1),
-      description: `You'll face a ${selectedDifficulty}-level interview for a ${role?.title} position with a ${style?.name.toLowerCase()} interviewer. Expect ~10 questions over 20 minutes.`
+      description: `You'll face a ${selectedDifficulty}-level interview for a ${role?.title} position with a ${style?.name.toLowerCase()} interviewer. The AI will ask you 5 questions and provide feedback.`
     };
   };
 
   const sessionSummary = getSessionSummary();
+
+  const handleBeginInterview = async () => {
+    if (!selectedRole || !selectedStyle) {
+      console.warn('Please select both a job role and interviewer style');
+      return;
+    }
+    
+    if (vapiStatus !== 'ready') {
+      console.error('Vapi is not ready. Status:', vapiStatus);
+      setVapiError('Interview service is initializing. Please wait a moment and try again.');
+      setTimeout(() => setVapiError(null), 3000);
+      return;
+    }
+    
+    setIsStartingInterview(true);
+    
+    try {
+      // Get the personality name that matches the ASSISTANT_IDS keys
+      const personalityName = PERSONALITY_MAP[selectedStyle];
+      const roleName = JOB_ROLE_MAP[selectedRole];
+      
+      if (!personalityName) {
+        throw new Error(`Invalid personality: ${selectedStyle}`);
+      }
+      
+      if (!roleName) {
+        throw new Error(`Invalid job role: ${selectedRole}`);
+      }
+      
+      console.log('Starting interview with:', {
+        personality: personalityName,
+        jobRole: roleName,
+        difficulty: selectedDifficulty
+      });
+      
+      // Set up event handlers before starting
+      vapiService.onCallStart = () => {
+        console.log('Vapi call started');
+      };
+      
+      vapiService.onCallEnd = () => {
+        console.log('Vapi call ended');
+        setIsStartingInterview(false);
+      };
+      
+      vapiService.onError = (error) => {
+        console.error('Vapi error during interview:', error);
+        setIsStartingInterview(false);
+      };
+      
+      // Start the Vapi interview
+      const result = await vapiService.startInterview(
+        personalityName,
+        roleName,
+        selectedDifficulty
+      );
+      
+      if (result.success) {
+        console.log('Interview started successfully:', result);
+        // Navigate to the Vapi call session page
+        navigate('/vapi-call', {
+          state: {
+            personality: personalityName,
+            jobRole: roleName,
+            difficulty: selectedDifficulty,
+            callId: result.callId
+          }
+        });
+      } else {
+        throw new Error('Failed to start interview');
+      }
+      
+    } catch (error) {
+      console.error('Failed to start interview:', error);
+      setVapiError(error.message || 'Failed to start interview. Please try again.');
+      setTimeout(() => setVapiError(null), 5000);
+      setIsStartingInterview(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-[#0A0F1E] text-white flex overflow-hidden">
@@ -228,6 +365,25 @@ const InterviewConfig = () => {
             <p className="text-gray-400 text-lg">
               Customize your practice session
             </p>
+            {/* Vapi Status Indicator */}
+            {vapiStatus === 'initializing' && (
+              <div className="mt-2 text-sm text-yellow-400 flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></div>
+                Initializing voice service...
+              </div>
+            )}
+            {vapiStatus === 'ready' && (
+              <div className="mt-2 text-sm text-green-400 flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-400"></div>
+                Voice service ready
+              </div>
+            )}
+            {vapiStatus === 'error' && (
+              <div className="mt-2 text-sm text-red-400 flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-red-400"></div>
+                {vapiError || 'Voice service error. Please refresh the page.'}
+              </div>
+            )}
           </motion.div>
 
           {/* Job Role Selection */}
@@ -299,7 +455,12 @@ const InterviewConfig = () => {
                 exit={{ opacity: 0, y: -20, height: 0 }}
                 transition={{ delay: 0.4 }}
               >
-                <SessionPreview summary={sessionSummary} />
+                <SessionPreview 
+                  summary={sessionSummary} 
+                  onBegin={handleBeginInterview}
+                  isStarting={isStartingInterview}
+                  isVapiReady={vapiStatus === 'ready'}
+                />
               </motion.section>
             )}
           </AnimatePresence>
@@ -318,7 +479,6 @@ const JobRoleCard = ({ role, selected, onClick }) => {
       onClick={onClick}
       className={`relative cursor-pointer group`}
     >
-      {/* Glow effect on selection */}
       {selected && (
         <div className={`absolute -inset-0.5 bg-gradient-to-r ${role.gradient} rounded-2xl blur opacity-75 group-hover:opacity-100 transition duration-300`}></div>
       )}
@@ -338,7 +498,6 @@ const JobRoleCard = ({ role, selected, onClick }) => {
           {role.description}
         </p>
         
-        {/* Selected indicator */}
         {selected && (
           <motion.div
             initial={{ scale: 0 }}
@@ -364,7 +523,6 @@ const PersonalityCard = ({ style, selected, onClick }) => {
       onClick={onClick}
       className="relative cursor-pointer group"
     >
-      {/* Glow effect on selection */}
       {selected && (
         <div className={`absolute -inset-0.5 bg-gradient-to-r ${style.gradient} rounded-2xl blur opacity-75 group-hover:opacity-100 transition duration-300`}></div>
       )}
@@ -384,7 +542,6 @@ const PersonalityCard = ({ style, selected, onClick }) => {
           {style.description}
         </p>
         
-        {/* Selected indicator */}
         {selected && (
           <motion.div
             initial={{ scale: 0 }}
@@ -441,19 +598,7 @@ const DifficultySelector = ({ selected, onChange }) => {
 };
 
 // Session Preview Component
-const SessionPreview = ({ summary }) => {
-  const navigate = useNavigate();
-
-  const handleBeginInterview = () => {
-    navigate('/interview-session', {
-      state: {
-        role: summary.role,
-        style: summary.style,
-        difficulty: summary.difficulty
-      }
-    });
-  };
-
+const SessionPreview = ({ summary, onBegin, isStarting, isVapiReady }) => {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -488,12 +633,30 @@ const SessionPreview = ({ summary }) => {
       <motion.button
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
-        onClick={handleBeginInterview}
-        className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold py-4 px-6 rounded-xl shadow-lg shadow-blue-500/25 transition-all duration-300 flex items-center justify-center space-x-2 group"
+        onClick={onBegin}
+        disabled={isStarting || !isVapiReady}
+        className={`w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold py-4 px-6 rounded-xl shadow-lg shadow-blue-500/25 transition-all duration-300 flex items-center justify-center space-x-2 group ${
+          (isStarting || !isVapiReady) ? 'opacity-50 cursor-not-allowed' : 'hover:from-blue-600 hover:to-purple-700'
+        }`}
       >
-        <span>Begin Interview</span>
-        <ArrowRightIcon className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
+        {isStarting ? (
+          <>
+            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            <span>Starting Interview...</span>
+          </>
+        ) : (
+          <>
+            <span>Begin Interview</span>
+            <ArrowRightIcon className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
+          </>
+        )}
       </motion.button>
+      
+      {!isVapiReady && !isStarting && (
+        <p className="text-xs text-yellow-400 text-center mt-3">
+          Voice service is initializing. Please wait a moment...
+        </p>
+      )}
     </motion.div>
   );
 };

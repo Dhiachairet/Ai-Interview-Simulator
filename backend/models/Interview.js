@@ -18,22 +18,46 @@ const interviewSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  // Vapi specific fields
+  vapiCallId: {
+    type: String,
+    unique: true,
+    sparse: true
+  },
+  transcript: {
+    type: String,
+    default: ''
+  },
+  summary: {
+    type: String,
+    default: ''
+  },
+  report: {
+    type: Object,
+    default: {}
+  },
+  overallScore: {
+    type: Number,
+    default: 0
+  },
+  duration: {
+    type: Number,
+    default: 0
+  },
   questions: [{
     question: String,
     userAnswer: String,
     feedback: String,
     score: Number
   }],
-  report: {
-    overallScore: Number,
-    strengths: [String],
-    improvements: [String],
-    recommendations: String
-  },
   status: {
     type: String,
     enum: ['in-progress', 'completed'],
     default: 'in-progress'
+  },
+  startedAt: {
+    type: Date,
+    default: Date.now
   },
   completedAt: {
     type: Date

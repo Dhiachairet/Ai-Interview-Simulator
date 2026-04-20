@@ -25,8 +25,10 @@ app.get('/', (req, res) => {
 // Mount auth routes
 app.use('/api/auth', require('./routes/authRoutes'));
 
-
 app.use('/api/interview', require('./routes/interviewRoutes'));
+
+// ✅ ADD VAPI WEBHOOK ROUTE
+app.use('/webhook', require('./routes/vapiWebhook'));
 
 // Start server
 const PORT = process.env.PORT || 5000;
