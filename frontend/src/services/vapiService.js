@@ -102,7 +102,6 @@ class VapiInterviewService {
     throw new Error(`No assistant found for personality: ${assistantPersonality}`);
   }
 
-  // Get current user from localStorage
   const userStr = localStorage.getItem('user');
   const user = userStr ? JSON.parse(userStr) : null;
   
