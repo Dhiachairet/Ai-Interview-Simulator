@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import './App.css'
@@ -10,6 +10,29 @@ import SimpleCharacterTest from './pages/SimpleCharacterTest'  // Add this
 import { AuthProvider } from './context/AuthContext'
 import History from './pages/History';
 import VapiCallSession from './pages/VapiCallSession';
+import AdminDashboard from './pages/AdminDashboard';
+import { useAuth } from './context/AuthContext';
+
+const AdminRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 bg-[#0A0F1E] flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-gray-400 mt-4">Checking admin access...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user || user.role !== 'admin') {
+    return <Navigate to="/" />;
+  }
+
+  return children;
+};
 
 function App() {
   return (
@@ -25,6 +48,14 @@ function App() {
           <Route path="/simple-test" element={<SimpleCharacterTest />} /> 
           <Route path="/history" element={<History />} />
           <Route path="/vapi-call" element={<VapiCallSession />} />
+          <Route
+            path="/admin"
+            element={
+              <AdminRoute>
+                <AdminDashboard />
+              </AdminRoute>
+            }
+          />
 
 
         </Routes>

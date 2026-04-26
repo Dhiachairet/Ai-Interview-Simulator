@@ -74,6 +74,9 @@ const handleGoogleCallback = async (req, res) => {
     let user = await User.findOne({ email });
 
     if (user) {
+      if (user.status === 'suspended') {
+        return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?error=account_suspended`);
+      }
       // User exists - update Google ID and avatar if not set
       if (!user.googleId) {
         user.googleId = id;

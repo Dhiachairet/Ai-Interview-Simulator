@@ -143,6 +143,19 @@ const Home = () => {
                       {user?.name}
                     </span>
                   </div>
+                  {user?.role === 'admin' && (
+                    <motion.div
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      <Link
+                        to="/admin"
+                        className="text-gray-300 hover:text-white px-4 py-2 text-sm font-medium transition"
+                      >
+                        Admin
+                      </Link>
+                    </motion.div>
+                  )}
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}

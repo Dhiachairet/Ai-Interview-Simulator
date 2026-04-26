@@ -80,6 +80,13 @@ const login = async (req, res) => {
       });
     }
 
+    if (user.status === 'suspended') {
+      return res.status(403).json({
+        success: false,
+        error: 'Account is suspended'
+      });
+    }
+
     // Check if password matches
     const isMatch = await user.matchPassword(password);
 

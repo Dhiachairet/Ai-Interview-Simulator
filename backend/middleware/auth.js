@@ -34,6 +34,23 @@ const protect = async (req, res, next) => {
       });
     }
 
+    if (req.user.status === 'suspended') {
+      return res.status(403).json({
+        success: false,
+        error: 'Account is suspended'
+      });
+    }
+
+    if (req.user.tokenInvalidBefore && decoded.iat) {
+      const tokenIssuedAt = new Date(decoded.iat * 1000);
+      if (tokenIssuedAt < req.user.tokenInvalidBefore) {
+        return res.status(401).json({
+          success: false,
+          error: 'Token no longer valid'
+        });
+      }
+    }
+
     next();
   } catch (error) {
     return res.status(401).json({
@@ -43,4 +60,15 @@ const protect = async (req, res, next) => {
   }
 };
 
-module.exports = { protect };
+const adminOnly = (req, res, next) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({
+      success: false,
+      error: 'Admin access required'
+    });
+  }
+
+  next();
+};
+
+module.exports = { protect, adminOnly };

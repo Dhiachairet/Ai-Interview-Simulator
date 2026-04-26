@@ -45,6 +45,15 @@ const userSchema = new mongoose.Schema({
     enum: ['local', 'google'],
     default: 'local'
   },
+  status: {
+    type: String,
+    enum: ['active', 'suspended'],
+    default: 'active'
+  },
+  tokenInvalidBefore: {
+    type: Date,
+    default: null
+  },
   createdAt: {
     type: Date,
     default: Date.now
