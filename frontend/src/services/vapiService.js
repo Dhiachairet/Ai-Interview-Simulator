@@ -14,8 +14,8 @@ class VapiInterviewService {
     this.isInitialized = false;
     this.currentCall = null;
     this.isCallActive = false;
+    this.currentVapiCallId = null;
     
-    // Event callbacks
     this.onCallStart = null;
     this.onCallEnd = null;
     this.onTranscript = null;
@@ -34,7 +34,7 @@ class VapiInterviewService {
       this.vapi = new Vapi(publicKey);
       this.isInitialized = true;
       this.setupEventListeners();
-      console.log('Vapi service initialized');
+      console.log('✅ Vapi service initialized');
       return true;
     } catch (error) {
       console.error('Failed to initialize Vapi:', error);
@@ -45,46 +45,60 @@ class VapiInterviewService {
   setupEventListeners() {
     if (!this.vapi) return;
 
-    // Call started - FIXED: Use correct event names based on Vapi SDK
-    this.vapi.on('call-start', () => {
-      console.log('📞 Interview call started');
+    this.vapi.on('call-start', (call) => {
+      console.log('📞 Interview call started', call);
       this.isCallActive = true;
+      
+      if (call && call.id) {
+        this.currentVapiCallId = call.id;
+        console.log('✅ Call ID from call-start event:', this.currentVapiCallId);
+      }
+      
       this.onCallStart?.();
     });
 
-    // Call ended - FIXED
-    this.vapi.on('call-end', () => {
-      console.log('🔚 Interview call ended');
+    this.vapi.on('call-end', (call) => {
+      console.log('🔚 Interview call ended', call);
       this.isCallActive = false;
+      
+      const vapiCallId = call?.id || this.currentVapiCallId;
+      console.log('Ended Call ID:', vapiCallId);
+      
+      if (vapiCallId && this.onCallEnd) {
+        this.onCallEnd(vapiCallId);
+      } else if (this.onCallEnd) {
+        this.onCallEnd();
+      }
+      
       this.currentCall = null;
-      this.onCallEnd?.();
     });
 
-    // Message from assistant - This is what you need for conversation
     this.vapi.on('message', (message) => {
-      console.log('💬 Assistant message:', message);
+      console.log('💬 Message:', message);
       this.onMessage?.(message);
     });
 
-    // User transcript
     this.vapi.on('user-speech', (transcript) => {
       console.log('🎤 User said:', transcript);
       this.onTranscript?.({ type: 'user', text: transcript });
     });
 
-    // Assistant transcript
     this.vapi.on('assistant-speech', (transcript) => {
       console.log('🤖 Assistant said:', transcript);
       this.onTranscript?.({ type: 'assistant', text: transcript });
     });
 
-    // Status updates
-    this.vapi.on('status-update', (status) => {
-      console.log('🔄 Status:', status);
-      this.onStatusUpdate?.(status);
+    this.vapi.on('status-update', (statusUpdate) => {
+      console.log('🔄 Status update:', statusUpdate);
+      
+      if (statusUpdate.call && statusUpdate.call.id && !this.currentVapiCallId) {
+        this.currentVapiCallId = statusUpdate.call.id;
+        console.log('✅ Call ID from status-update:', this.currentVapiCallId);
+      }
+      
+      this.onStatusUpdate?.(statusUpdate);
     });
 
-    // Errors
     this.vapi.on('error', (error) => {
       console.error('❌ Vapi error:', error);
       this.onError?.(error);
@@ -92,60 +106,68 @@ class VapiInterviewService {
   }
 
   async startInterview(assistantPersonality, jobRole, difficulty = 'medium') {
-  if (!this.isInitialized || !this.vapi) {
-    throw new Error('Vapi not initialized. Call initialize() first.');
-  }
+    if (!this.isInitialized || !this.vapi) {
+      throw new Error('Vapi not initialized. Call initialize() first.');
+    }
 
-  const assistantId = ASSISTANT_IDS[assistantPersonality];
-  
-  if (!assistantId) {
-    throw new Error(`No assistant found for personality: ${assistantPersonality}`);
-  }
+    const assistantId = ASSISTANT_IDS[assistantPersonality];
+    
+    if (!assistantId) {
+      throw new Error(`No assistant found for personality: ${assistantPersonality}`);
+    }
 
-  const userStr = localStorage.getItem('user');
-  const user = userStr ? JSON.parse(userStr) : null;
-  
-  console.log(`🎤 Starting interview with ${assistantPersonality} for ${jobRole} at ${difficulty} level`);
-  console.log(`User ID: ${user?.id}`);
+    const userStr = localStorage.getItem('user');
+    const user = userStr ? JSON.parse(userStr) : null;
+    
+    console.log(`🎤 Starting interview with ${assistantPersonality} for ${jobRole}`);
 
-  try {
-    await this.vapi.start(assistantId, {
-      variableValues: {
-        jobRole: jobRole,
-        difficulty: difficulty
-      },
-      metadata: {
-        userId: user?.id,
-        jobRole: jobRole,
-        personality: assistantPersonality,
-        difficulty: difficulty
+    try {
+      const result = await this.vapi.start(assistantId, {
+        variableValues: {
+          jobRole: jobRole,
+          difficulty: difficulty,
+          personality: assistantPersonality
+        },
+        metadata: {
+          userId: user?.id,
+          jobRole: jobRole,
+          personality: assistantPersonality,
+          difficulty: difficulty
+        }
+      });
+      
+      console.log('Vapi start result:', result);
+      
+      if (result && result.id) {
+        this.currentVapiCallId = result.id;
+        console.log('✅ Call ID captured from start result:', this.currentVapiCallId);
       }
-    });
-    
-    this.currentCall = {
-      assistantId,
-      personality: assistantPersonality,
-      jobRole,
-      difficulty,
-      startedAt: new Date()
-    };
-    
-    return { 
-      success: true, 
-      callId: this.currentCall,
-      message: `Interview started with ${assistantPersonality} interviewer`
-    };
-  } catch (error) {
-    console.error('Failed to start interview:', error);
-    throw error;
+      
+      this.currentCall = {
+        assistantId,
+        personality: assistantPersonality,
+        jobRole,
+        difficulty,
+        startedAt: new Date(),
+        vapiCallId: result?.id || null
+      };
+      
+      return { 
+        success: true, 
+        callId: result?.id,
+        message: `Interview started with ${assistantPersonality} interviewer`
+      };
+    } catch (error) {
+      console.error('Failed to start interview:', error);
+      throw error;
+    }
   }
-}
+  
   stopInterview() {
     if (this.vapi && this.isCallActive) {
       this.vapi.stop();
       this.isCallActive = false;
-      this.currentCall = null;
-      console.log('Interview stopped');
+      console.log('Interview stopped - currentVapiCallId:', this.currentVapiCallId);
     }
   }
 
@@ -168,6 +190,10 @@ class VapiInterviewService {
     return false;
   }
 
+  getCurrentVapiCallId() {
+    return this.currentVapiCallId;
+  }
+
   getCurrentCall() {
     return this.currentCall;
   }
@@ -176,13 +202,10 @@ class VapiInterviewService {
     return this.isCallActive;
   }
 
-  // New method to check if assistant is speaking
   isAssistantSpeaking() {
     return this.vapi ? this.vapi.isSpeaking() : false;
   }
 }
 
-// Create singleton instance
 const vapiService = new VapiInterviewService();
-
 export default vapiService;

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import api from '../services/api';
 import { 
   HomeIcon,
   PlayIcon,
@@ -191,83 +192,87 @@ const InterviewConfig = () => {
   const sessionSummary = getSessionSummary();
 
   const handleBeginInterview = async () => {
-    if (!selectedRole || !selectedStyle) {
-      console.warn('Please select both a job role and interviewer style');
-      return;
-    }
+  if (!selectedRole || !selectedStyle) {
+    console.warn('Please select both a job role and interviewer style');
+    return;
+  }
+  
+  if (vapiStatus !== 'ready') {
+    console.error('Vapi is not ready. Status:', vapiStatus);
+    setVapiError('Interview service is initializing. Please wait a moment and try again.');
+    setTimeout(() => setVapiError(null), 3000);
+    return;
+  }
+  
+  setIsStartingInterview(true);
+  
+  try {
+    const personalityName = PERSONALITY_MAP[selectedStyle];
+    const roleName = JOB_ROLE_MAP[selectedRole];
     
-    if (vapiStatus !== 'ready') {
-      console.error('Vapi is not ready. Status:', vapiStatus);
-      setVapiError('Interview service is initializing. Please wait a moment and try again.');
-      setTimeout(() => setVapiError(null), 3000);
-      return;
-    }
+    if (!personalityName) throw new Error(`Invalid personality: ${selectedStyle}`);
+    if (!roleName) throw new Error(`Invalid job role: ${selectedRole}`);
     
-    setIsStartingInterview(true);
+    console.log('Starting interview with:', {
+      personality: personalityName,
+      jobRole: roleName,
+      difficulty: selectedDifficulty
+    });
     
-    try {
-      // Get the personality name that matches the ASSISTANT_IDS keys
-      const personalityName = PERSONALITY_MAP[selectedStyle];
-      const roleName = JOB_ROLE_MAP[selectedRole];
+    // ✅ Set up call-end handler to save the Vapi call
+    vapiService.onCallEnd = async (vapiCallId) => {
+      console.log('Vapi call ended, saving call ID:', vapiCallId);
       
-      if (!personalityName) {
-        throw new Error(`Invalid personality: ${selectedStyle}`);
-      }
-      
-      if (!roleName) {
-        throw new Error(`Invalid job role: ${selectedRole}`);
-      }
-      
-      console.log('Starting interview with:', {
-        personality: personalityName,
-        jobRole: roleName,
-        difficulty: selectedDifficulty
-      });
-      
-      // Set up event handlers before starting
-      vapiService.onCallStart = () => {
-        console.log('Vapi call started');
-      };
-      
-      vapiService.onCallEnd = () => {
-        console.log('Vapi call ended');
-        setIsStartingInterview(false);
-      };
-      
-      vapiService.onError = (error) => {
-        console.error('Vapi error during interview:', error);
-        setIsStartingInterview(false);
-      };
-      
-      // Start the Vapi interview
-      const result = await vapiService.startInterview(
-        personalityName,
-        roleName,
-        selectedDifficulty
-      );
-      
-      if (result.success) {
-        console.log('Interview started successfully:', result);
-        // Navigate to the Vapi call session page
-        navigate('/vapi-call', {
-          state: {
-            personality: personalityName,
-            jobRole: roleName,
-            difficulty: selectedDifficulty,
-            callId: result.callId
-          }
-        });
+      if (vapiCallId) {
+        try {
+          const response = await api.post('/api/interview/save-vapi-call', { vapiCallId });
+          console.log('✅ Successfully saved Vapi call data:', response.data);
+        } catch (error) {
+          console.error('Failed to save Vapi call:', error);
+        }
       } else {
-        throw new Error('Failed to start interview');
+        console.warn('No vapiCallId received, cannot save');
       }
       
-    } catch (error) {
-      console.error('Failed to start interview:', error);
-      setVapiError(error.message || 'Failed to start interview. Please try again.');
-      setTimeout(() => setVapiError(null), 5000);
       setIsStartingInterview(false);
+    };
+    
+    vapiService.onCallStart = () => {
+      console.log('Vapi call started');
+    };
+    
+    vapiService.onError = (error) => {
+      console.error('Vapi error during interview:', error);
+      setIsStartingInterview(false);
+    };
+    
+    const result = await vapiService.startInterview(
+      personalityName,
+      roleName,
+      selectedDifficulty
+    );
+    
+    if (result.success) {
+      console.log('Interview started successfully:', result);
+      navigate('/vapi-call', {
+        state: {
+          personality: personalityName,
+          jobRole: roleName,
+          difficulty: selectedDifficulty,
+          callId: result.callId
+        }
+      });
+    } else {
+      throw new Error('Failed to start interview');
     }
-  };
+    
+  } catch (error) {
+    console.error('Failed to start interview:', error);
+    setVapiError(error.message || 'Failed to start interview. Please try again.');
+    setTimeout(() => setVapiError(null), 5000);
+    setIsStartingInterview(false);
+  }
+};
 
   return (
     <div className="fixed inset-0 bg-[#0A0F1E] text-white flex overflow-hidden">

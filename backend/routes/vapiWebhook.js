@@ -6,31 +6,34 @@ const Interview = require('../models/Interview');
 router.post('/vapi-webhook', async (req, res) => {
   try {
     console.log('📨 Received Vapi webhook');
-    console.log('Full body:', JSON.stringify(req.body, null, 2));
     
-    const { message, call, assistant } = req.body;
+    const { message, call } = req.body;
     
-    // Handle different webhook event types
+    console.log('Message type:', message?.type);
+    
     switch (message?.type) {
       case 'end-of-call-report':
         console.log('✅ Processing end-of-call-report');
         
-        // Extract data from the message (not from call)
-        const transcript = message?.transcript || '';
-        const summary = message?.summary || '';
-        const structuredData = message?.structuredData || {};
-        const analysis = message?.analysis || {};
+        // ✅ CORRECT: Extract transcript from call.artifact
+        const artifact = call?.artifact || {};
+        const transcript = artifact?.transcript || '';
+        const recordingUrl = artifact?.recordingUrl || '';
+        const messages = artifact?.messages || [];
         
-        // Calculate overall score from multiple possible locations
+        // Extract analysis
+        const analysis = message?.analysis || call?.analysis || {};
+        const summary = analysis?.summary || '';
+        const structuredData = analysis?.structuredData || {};
+        
+        // Calculate overall score
         let overallScore = structuredData?.overallScore || 
-                          analysis?.summary?.score || 
-                          message?.score || 0;
+                          analysis?.score || 
+                          message?.cost ? 75 : 0;
         
         // Extract strengths and improvements
-        const strengths = structuredData?.strengths || 
-                         analysis?.summary?.strengths || [];
-        const improvements = structuredData?.improvements || 
-                            analysis?.summary?.weaknesses || [];
+        const strengths = structuredData?.strengths || [];
+        const improvements = structuredData?.improvements || [];
         
         // Parse transcript into questions and answers
         const questions = [];
@@ -38,74 +41,62 @@ router.post('/vapi-webhook', async (req, res) => {
         let currentQuestion = null;
         
         for (const line of lines) {
-          if (line.startsWith('Assistant:')) {
+          if (line.includes('Assistant:') || line.includes('AI:')) {
             currentQuestion = {
-              question: line.replace('Assistant:', '').trim(),
+              question: line.replace(/Assistant:|AI:/, '').trim(),
               userAnswer: '',
               feedback: '',
               score: 0
             };
             questions.push(currentQuestion);
-          } else if (line.startsWith('User:') && currentQuestion) {
-            currentQuestion.userAnswer = line.replace('User:', '').trim();
+          } else if ((line.includes('User:') || line.includes('Candidate:')) && currentQuestion) {
+            currentQuestion.userAnswer = line.replace(/User:|Candidate:/, '').trim();
           }
         }
         
-        // Find or create interview record
+        // Find and update interview
         let interview = await Interview.findOne({ vapiCallId: call?.id });
         
-        if (interview) {
-          // Update existing interview
-          interview.transcript = transcript;
-          interview.summary = summary;
-          interview.questions = questions.length > 0 ? questions : interview.questions;
-          interview.report = {
+        const interviewData = {
+          transcript: transcript,
+          summary: summary,
+          questions: questions.length > 0 ? questions : [],
+          report: {
             overallScore: overallScore,
             strengths: strengths,
             improvements: improvements,
-            recommendations: structuredData?.recommendations || analysis?.summary?.recommendations || ''
-          };
-          interview.overallScore = overallScore;
-          interview.status = 'completed';
-          interview.completedAt = new Date();
-          interview.duration = call?.duration || 0;
-          
+            recommendations: structuredData?.recommendations || '',
+            recordingUrl: recordingUrl,
+            fullAnalysis: structuredData
+          },
+          overallScore: overallScore,
+          status: 'completed',
+          completedAt: new Date(),
+          duration: call?.duration || 0
+        };
+        
+        if (interview) {
+          Object.assign(interview, interviewData);
           await interview.save();
-          console.log(`✅ Updated interview record for call ${call?.id}`);
+          console.log(`✅ Updated interview for call ${call?.id}`);
         } else {
-          // Create new interview record
           interview = await Interview.create({
             vapiCallId: call?.id,
             jobRole: call?.metadata?.jobRole || 'Unknown',
             personality: call?.metadata?.personality || 'Unknown',
             difficulty: call?.metadata?.difficulty || 'medium',
-            transcript: transcript,
-            summary: summary,
-            questions: questions,
-            report: {
-              overallScore: overallScore,
-              strengths: strengths,
-              improvements: improvements,
-              recommendations: structuredData?.recommendations || ''
-            },
-            overallScore: overallScore,
-            status: 'completed',
-            startedAt: new Date(Date.now() - (call?.duration || 0) * 1000),
-            completedAt: new Date(),
-            duration: call?.duration || 0,
-            user: call?.metadata?.userId || null
+            user: call?.metadata?.userId || null,
+            ...interviewData
           });
-          console.log(`✅ Created new interview record for call ${call?.id}`);
+          console.log(`✅ Created new interview for call ${call?.id}`);
         }
         break;
         
       case 'call-started':
         console.log('📞 Call started:', call?.id);
         
-        // Check if record already exists
-        let existingInterview = await Interview.findOne({ vapiCallId: call?.id });
-        
-        if (!existingInterview) {
+        let existing = await Interview.findOne({ vapiCallId: call?.id });
+        if (!existing) {
           await Interview.create({
             vapiCallId: call?.id,
             jobRole: call?.metadata?.jobRole || 'Unknown',

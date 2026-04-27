@@ -3,9 +3,9 @@ const router = express.Router();
 const { protect } = require('../middleware/auth');
 const { generateQuestion, evaluateAnswer } = require('../services/geminiService');
 const Interview = require('../models/Interview');
-const { generateSpeech } = require('../services/elevenlabsTTS'); // Updated to use ElevenLabs
+const { generateSpeech } = require('../services/elevenlabsTTS');
 
-// Start interview - create session
+// Start interview - create session (Legacy Gemini mode)
 router.post('/start', protect, async (req, res) => {
   try {
     const { jobRole, personality, difficulty } = req.body;
@@ -33,7 +33,7 @@ router.post('/start', protect, async (req, res) => {
   }
 });
 
-// Submit answer and save to database
+// Submit answer and save to database (Legacy Gemini mode)
 router.post('/answer', protect, async (req, res) => {
   try {
     const { 
@@ -100,15 +100,138 @@ router.post('/answer', protect, async (req, res) => {
   }
 });
 
+// ✅ SAVE VAPI CALL DATA ENDPOINT - CORRECTED
+router.post('/save-vapi-call', protect, async (req, res) => {
+  const { vapiCallId } = req.body;
+  
+  console.log('📞 Saving Vapi call:', vapiCallId);
+  
+  if (!vapiCallId) {
+    return res.status(400).json({ success: false, error: 'Missing vapiCallId' });
+  }
+
+  try {
+    const url = `https://api.vapi.ai/call/${vapiCallId}`;
+    
+    console.log('Fetching from Vapi API:', url);
+    
+    const vapiResponse = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${process.env.VAPI_PRIVATE_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!vapiResponse.ok) {
+      const errorText = await vapiResponse.text();
+      console.error('Vapi API error response:', errorText);
+      throw new Error(`Vapi API error: ${vapiResponse.status}`);
+    }
+
+    const callData = await vapiResponse.json();
+    console.log(`✅ Fetched call ${vapiCallId} from Vapi API`);
+    
+    // ✅ CORRECT: Use variableValues for metadata (NOT metadata field)
+    const variableValues = callData.variableValues || {};
+    
+    const jobRole = variableValues.jobRole || 'Unknown';
+    const personality = variableValues.personality || 
+                        callData.assistant?.name || 
+                        'Unknown';
+    const difficulty = variableValues.difficulty || 'medium';
+    
+    console.log(`📋 Extracted - Role: ${jobRole}, Personality: ${personality}, Difficulty: ${difficulty}`);
+    
+    // Extract data
+    const transcript = callData.artifact?.transcript || '';
+    const recordingUrl = callData.artifact?.recordingUrl || '';
+    const summary = callData.analysis?.summary || '';
+    const structuredData = callData.analysis?.structuredData || {};
+    const overallScore = structuredData?.overallScore || 0;
+    const strengths = structuredData?.strengths || [];
+    const improvements = structuredData?.improvements || [];
+    
+    // Parse transcript into questions and answers
+    const questions = [];
+    const lines = transcript.split('\n');
+    let currentQuestion = null;
+    
+    for (const line of lines) {
+      if (line.includes('Assistant:') || line.includes('AI:')) {
+        currentQuestion = {
+          question: line.replace(/Assistant:|AI:/, '').trim(),
+          userAnswer: '',
+          feedback: '',
+          score: 0
+        };
+        questions.push(currentQuestion);
+      } else if ((line.includes('User:') || line.includes('Candidate:')) && currentQuestion) {
+        currentQuestion.userAnswer = line.replace(/User:|Candidate:/, '').trim();
+      }
+    }
+    
+    // Find or create interview
+    let interview = await Interview.findOne({ vapiCallId: vapiCallId });
+    
+    const interviewData = {
+      vapiCallId: vapiCallId,
+      jobRole: jobRole,
+      personality: personality,
+      difficulty: difficulty,
+      transcript: transcript,
+      summary: summary,
+      recordingUrl: recordingUrl,
+      questions: questions,
+      report: {
+        overallScore: overallScore,
+        strengths: strengths,
+        improvements: improvements,
+        fullAnalysis: structuredData
+      },
+      overallScore: overallScore,
+      status: 'completed',
+      completedAt: new Date(),
+      duration: callData.duration || 0
+    };
+    
+    if (interview) {
+      Object.assign(interview, interviewData);
+      await interview.save();
+      console.log(`✅ Updated interview for call ${vapiCallId}`);
+    } else {
+      interview = await Interview.create({
+        user: req.user.id,
+        ...interviewData
+      });
+      console.log(`✅ Created new interview for call ${vapiCallId}`);
+    }
+    
+    res.json({ success: true, data: interview });
+    
+  } catch (error) {
+    console.error('Error saving Vapi call:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Get interview history for current user
 router.get('/history', protect, async (req, res) => {
   try {
-    const interviews = await Interview.find({ user: req.user.id })
-      .sort('-createdAt')
-      .select('jobRole personality difficulty report status createdAt');
+    console.log('Fetching history for user:', req.user.id);
     
-    res.json({ success: true, data: interviews });
+    const interviews = await Interview.find({ user: req.user.id })
+      .sort('-createdAt');
+    
+    console.log(`Found ${interviews.length} interviews`);
+    
+    res.json({ 
+      success: true, 
+      data: interviews,
+      count: interviews.length
+    });
   } catch (error) {
+    console.error('Error fetching history:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -170,7 +293,6 @@ router.post('/speak', protect, async (req, res) => {
         voiceUsed: result.voiceUsed
       });
     } else {
-      // Return 200 but with success false so frontend falls back
       res.json({ success: false, error: result.error });
     }
   } catch (error) {
