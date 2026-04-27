@@ -17,8 +17,7 @@ import {
   SparklesIcon,
   ChatBubbleLeftRightIcon,
   CheckCircleIcon,
-  XCircleIcon,
-  ArrowPathIcon
+  XCircleIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -30,7 +29,6 @@ const InterviewReport = () => {
   const [interview, setInterview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [showFullTranscript, setShowFullTranscript] = useState(false);
 
   useEffect(() => {
     fetchInterviewDetails();
@@ -87,10 +85,31 @@ const InterviewReport = () => {
   };
 
   const formatDuration = (seconds) => {
-    if (!seconds) return 'N/A';
+    if (!seconds || seconds === 0) return 'N/A';
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins} min ${secs} sec`;
+  };
+
+  // Calculate overall score from questions if not available
+  const calculateOverallScore = () => {
+    if (!interview) return 0;
+    
+    // If report has overallScore, use it
+    if (interview.report?.overallScore && interview.report.overallScore > 0) {
+      return interview.report.overallScore;
+    }
+    
+    // Calculate from question scores
+    if (interview.questions && interview.questions.length > 0) {
+      const scores = interview.questions.filter(q => q.score && q.score > 0).map(q => q.score);
+      if (scores.length > 0) {
+        const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+        return Math.round(avg);
+      }
+    }
+    
+    return 0;
   };
 
   if (loading) {
@@ -120,11 +139,10 @@ const InterviewReport = () => {
     );
   }
 
-  const overallScore = interview.report?.overallScore || interview.overallScore || 0;
+  const overallScore = calculateOverallScore();
   const strengths = interview.report?.strengths || [];
   const improvements = interview.report?.improvements || [];
   const questions = interview.questions || [];
-  const transcript = interview.transcript || '';
 
   return (
     <div className="fixed inset-0 bg-[#0A0F1E] text-white flex overflow-hidden">
@@ -381,42 +399,6 @@ const InterviewReport = () => {
                   </motion.div>
                 ))}
               </div>
-            </motion.div>
-          )}
-
-          {/* Full Transcript Section */}
-          {transcript && transcript.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.25 }}
-              className="mb-8"
-            >
-              <button
-                onClick={() => setShowFullTranscript(!showFullTranscript)}
-                className="w-full flex items-center justify-between p-4 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl hover:bg-white/10 transition"
-              >
-                <div className="flex items-center gap-2">
-                  <DocumentTextIcon className="h-5 w-5 text-blue-400" />
-                  <span className="font-medium">Full Conversation Transcript</span>
-                </div>
-                <ArrowPathIcon className={`h-5 w-5 transition-transform ${showFullTranscript ? 'rotate-180' : ''}`} />
-              </button>
-              
-              <AnimatePresence>
-                {showFullTranscript && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="mt-4 p-4 bg-black/30 rounded-xl overflow-auto max-h-96"
-                  >
-                    <pre className="text-sm text-gray-300 whitespace-pre-wrap font-mono">
-                      {transcript}
-                    </pre>
-                  </motion.div>
-                )}
-              </AnimatePresence>
             </motion.div>
           )}
 
