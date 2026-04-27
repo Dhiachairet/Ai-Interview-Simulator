@@ -100,85 +100,114 @@ router.post('/answer', protect, async (req, res) => {
   }
 });
 
-// ✅ SAVE VAPI CALL DATA ENDPOINT - WITH FALLBACK METADATA
+// Track ongoing save operations to prevent duplicates
+const savingCalls = new Set();
+
+// ✅ SAVE VAPI CALL DATA ENDPOINT - WITH DUPLICATE PROTECTION
 router.post('/save-vapi-call', protect, async (req, res) => {
   const { vapiCallId, fallbackMetadata } = req.body;
   
-  console.log('📞 Saving Vapi call:', vapiCallId);
-  console.log('📋 Fallback metadata received:', fallbackMetadata);
+  console.log(`📞 Saving Vapi call: ${vapiCallId}`);
+  console.log(`📋 Fallback metadata:`, fallbackMetadata);
   
   if (!vapiCallId) {
     return res.status(400).json({ success: false, error: 'Missing vapiCallId' });
   }
+  
+  // ✅ Prevent duplicate processing for the same call ID
+  if (savingCalls.has(vapiCallId)) {
+    console.log(`⏭️ Already processing call ${vapiCallId}, skipping duplicate`);
+    return res.status(200).json({ success: true, message: 'Already processing', duplicate: true });
+  }
+  
+  savingCalls.add(vapiCallId);
+  
+  // Clean up after 30 seconds (in case of errors)
+  setTimeout(() => {
+    savingCalls.delete(vapiCallId);
+  }, 30000);
 
   try {
-    const url = `https://api.vapi.ai/call/${vapiCallId}`;
+    // ✅ FIRST: Use fallbackMetadata from frontend (most reliable)
+    let jobRole = fallbackMetadata?.jobRole || 'Unknown';
+    let personality = fallbackMetadata?.personality || 'Unknown';
+    let difficulty = fallbackMetadata?.difficulty || 'medium';
     
-    console.log('Fetching from Vapi API:', url);
+    let transcript = '';
+    let recordingUrl = '';
+    let summary = '';
+    let overallScore = 0;
+    let strengths = [];
+    let improvements = [];
+    let questions = [];
+    let duration = 0;
     
-    const vapiResponse = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${process.env.VAPI_PRIVATE_KEY}`,
-        'Content-Type': 'application/json'
-      }
-    });
+    // ✅ SECOND: Try to fetch from Vapi API for transcript only
+    try {
+      const url = `https://api.vapi.ai/call/${vapiCallId}`;
+      
+      console.log('Fetching from Vapi API:', url);
+      
+      const vapiResponse = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${process.env.VAPI_PRIVATE_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      });
 
-    if (!vapiResponse.ok) {
-      const errorText = await vapiResponse.text();
-      console.error('Vapi API error response:', errorText);
-      throw new Error(`Vapi API error: ${vapiResponse.status}`);
-    }
-
-    const callData = await vapiResponse.json();
-    console.log(`✅ Fetched call ${vapiCallId} from Vapi API`);
-    
-    // ✅ PRIORITIZE: Use fallbackMetadata from frontend FIRST
-    // This is the data we saved locally when the call started
-    const jobRole = fallbackMetadata?.jobRole || 
-                    callData.variableValues?.jobRole || 
-                    'Unknown';
-    
-    const personality = fallbackMetadata?.personality || 
-                        callData.variableValues?.personality || 
-                        callData.assistant?.name || 
-                        'Unknown';
-    
-    const difficulty = fallbackMetadata?.difficulty || 
-                       callData.variableValues?.difficulty || 
-                       'medium';
-    
-    console.log(`📋 Extracted - Role: ${jobRole}, Personality: ${personality}, Difficulty: ${difficulty}`);
-    
-    // Extract transcript and analysis (these still come from Vapi API)
-    const transcript = callData.artifact?.transcript || '';
-    const recordingUrl = callData.artifact?.recordingUrl || '';
-    const summary = callData.analysis?.summary || '';
-    const structuredData = callData.analysis?.structuredData || {};
-    const overallScore = structuredData?.overallScore || 0;
-    const strengths = structuredData?.strengths || [];
-    const improvements = structuredData?.improvements || [];
-    
-    // Parse transcript into questions and answers
-    const questions = [];
-    const lines = transcript.split('\n');
-    let currentQuestion = null;
-    
-    for (const line of lines) {
-      if (line.includes('Assistant:') || line.includes('AI:')) {
-        currentQuestion = {
-          question: line.replace(/Assistant:|AI:/, '').trim(),
-          userAnswer: '',
-          feedback: '',
-          score: 0
-        };
-        questions.push(currentQuestion);
-      } else if ((line.includes('User:') || line.includes('Candidate:')) && currentQuestion) {
-        currentQuestion.userAnswer = line.replace(/User:|Candidate:/, '').trim();
+      if (vapiResponse.ok) {
+        const callData = await vapiResponse.json();
+        console.log(`✅ Fetched call ${vapiCallId} from Vapi API`);
+        
+        // Only use Vapi data for transcript and analysis
+        transcript = callData.artifact?.transcript || '';
+        recordingUrl = callData.artifact?.recordingUrl || '';
+        summary = callData.analysis?.summary || '';
+        const structuredData = callData.analysis?.structuredData || {};
+        overallScore = structuredData?.overallScore || 0;
+        strengths = structuredData?.strengths || [];
+        improvements = structuredData?.improvements || [];
+        duration = callData.duration || 0;
+        
+        // Only use Vapi metadata if fallback didn't have it
+        if (jobRole === 'Unknown' && callData.variableValues?.jobRole) {
+          jobRole = callData.variableValues.jobRole;
+        }
+        if (personality === 'Unknown' && callData.variableValues?.personality) {
+          personality = callData.variableValues.personality;
+        }
+        if (difficulty === 'medium' && callData.variableValues?.difficulty) {
+          difficulty = callData.variableValues.difficulty;
+        }
+        
+        // Parse transcript into questions and answers
+        const lines = transcript.split('\n');
+        let currentQuestion = null;
+        
+        for (const line of lines) {
+          if (line.includes('Assistant:') || line.includes('AI:')) {
+            currentQuestion = {
+              question: line.replace(/Assistant:|AI:/, '').trim(),
+              userAnswer: '',
+              feedback: '',
+              score: 0
+            };
+            questions.push(currentQuestion);
+          } else if ((line.includes('User:') || line.includes('Candidate:')) && currentQuestion) {
+            currentQuestion.userAnswer = line.replace(/User:|Candidate:/, '').trim();
+          }
+        }
+      } else {
+        console.log(`⚠️ Vapi API returned ${vapiResponse.status}, using fallback data only`);
       }
+    } catch (apiError) {
+      console.log(`⚠️ Vapi API error: ${apiError.message}, using fallback data only`);
     }
     
-    // Find or create interview
+    console.log(`📋 FINAL - Role: ${jobRole}, Personality: ${personality}, Difficulty: ${difficulty}`);
+    
+    // Find existing interview or create new one
     let interview = await Interview.findOne({ vapiCallId: vapiCallId });
     
     const interviewData = {
@@ -194,18 +223,26 @@ router.post('/save-vapi-call', protect, async (req, res) => {
         overallScore: overallScore,
         strengths: strengths,
         improvements: improvements,
-        fullAnalysis: structuredData
+        fullAnalysis: {}
       },
       overallScore: overallScore,
       status: 'completed',
       completedAt: new Date(),
-      duration: callData.duration || 0
+      duration: duration
     };
     
     if (interview) {
-      Object.assign(interview, interviewData);
-      await interview.save();
-      console.log(`✅ Updated interview for call ${vapiCallId}`);
+      // Check if this interview already has valid data
+      const hasValidData = interview.jobRole !== 'Unknown' && interview.jobRole !== undefined;
+      
+      if (!hasValidData || interview.jobRole === 'Unknown') {
+        // Update only if we have better data
+        Object.assign(interview, interviewData);
+        await interview.save();
+        console.log(`✅ Updated interview for call ${vapiCallId}`);
+      } else {
+        console.log(`⏭️ Interview ${vapiCallId} already has valid data, skipping update`);
+      }
     } else {
       interview = await Interview.create({
         user: req.user.id,
@@ -217,8 +254,13 @@ router.post('/save-vapi-call', protect, async (req, res) => {
     res.json({ success: true, data: interview });
     
   } catch (error) {
-    console.error('Error saving Vapi call:', error);
+    console.error('❌ Error saving Vapi call:', error);
     res.status(500).json({ success: false, error: error.message });
+  } finally {
+    // Remove from tracking after 1 second to allow retries if needed
+    setTimeout(() => {
+      savingCalls.delete(vapiCallId);
+    }, 1000);
   }
 });
 // Get interview history for current user

@@ -105,74 +105,101 @@ class VapiInterviewService {
     });
   }
 
-  async startInterview(assistantPersonality, jobRole, difficulty = 'medium') {
-    if (!this.isInitialized || !this.vapi) {
-      throw new Error('Vapi not initialized. Call initialize() first.');
-    }
-
-    const assistantId = ASSISTANT_IDS[assistantPersonality];
-    
-    if (!assistantId) {
-      throw new Error(`No assistant found for personality: ${assistantPersonality}`);
-    }
-
-    const userStr = localStorage.getItem('user');
-    const user = userStr ? JSON.parse(userStr) : null;
-    
-    console.log(`🎤 Starting interview with ${assistantPersonality} for ${jobRole}`);
-
-    try {
-      const result = await this.vapi.start(assistantId, {
-        variableValues: {
-          jobRole: jobRole,
-          difficulty: difficulty,
-          personality: assistantPersonality
-        },
-        metadata: {
-          userId: user?.id,
-          jobRole: jobRole,
-          personality: assistantPersonality,
-          difficulty: difficulty
-        }
-      });
-        const callMetadata = {
-      vapiCallId: result?.id,
-      jobRole: jobRole,
-      personality: assistantPersonality,
-      difficulty: difficulty,
-      startedAt: new Date().toISOString()
-    };
-    sessionStorage.setItem('currentInterviewData', JSON.stringify(callMetadata));
-    console.log('✅ Saved interview metadata locally:', callMetadata);
-    
-      
-      console.log('Vapi start result:', result);
-      
-      if (result && result.id) {
-        this.currentVapiCallId = result.id;
-        console.log('✅ Call ID captured from start result:', this.currentVapiCallId);
-      }
-      
-      this.currentCall = {
-        assistantId,
-        personality: assistantPersonality,
-        jobRole,
-        difficulty,
-        startedAt: new Date(),
-        vapiCallId: result?.id || null
-      };
-      
-      return { 
-        success: true, 
-        callId: result?.id,
-        message: `Interview started with ${assistantPersonality} interviewer`
-      };
-    } catch (error) {
-      console.error('Failed to start interview:', error);
-      throw error;
-    }
+ async startInterview(assistantPersonality, jobRole, difficulty = 'medium') {
+  if (!this.isInitialized || !this.vapi) {
+    throw new Error('Vapi not initialized. Call initialize() first.');
   }
+
+  const assistantId = ASSISTANT_IDS[assistantPersonality];
   
+  if (!assistantId) {
+    throw new Error(`No assistant found for personality: ${assistantPersonality}`);
+  }
+
+  const userStr = localStorage.getItem('user');
+  const user = userStr ? JSON.parse(userStr) : null;
+  
+  console.log(`🎤 Starting interview with ${assistantPersonality} for ${jobRole}`);
+
+  // ✅ Generate a TEMPORARY ID immediately (before Vapi responds)
+  const tempId = `temp_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+  
+  // ✅ Save metadata with temp ID IMMEDIATELY
+  const callMetadata = {
+    vapiCallId: tempId,
+    jobRole: jobRole,
+    personality: assistantPersonality,
+    difficulty: difficulty,
+    startedAt: new Date().toISOString(),
+    isTemp: true
+  };
+  
+  // Save to BOTH storage types
+  sessionStorage.setItem('currentInterviewData', JSON.stringify(callMetadata));
+  localStorage.setItem(`interview_${tempId}`, JSON.stringify(callMetadata));
+  console.log('✅ Saved TEMPORARY metadata:', callMetadata);
+
+  try {
+    const result = await this.vapi.start(assistantId, {
+      variableValues: {
+        jobRole: jobRole,
+        difficulty: difficulty,
+        personality: assistantPersonality
+      },
+      metadata: {
+        userId: user?.id,
+        jobRole: jobRole,
+        personality: assistantPersonality,
+        difficulty: difficulty
+      }
+    });
+    
+    console.log('Vapi start result:', result);
+    
+    // ✅ Update metadata with REAL call ID
+    if (result && result.id) {
+      const realCallId = result.id;
+      this.currentVapiCallId = realCallId;
+      
+      // Update metadata with real ID
+      const updatedMetadata = {
+        vapiCallId: realCallId,
+        jobRole: jobRole,
+        personality: assistantPersonality,
+        difficulty: difficulty,
+        startedAt: new Date().toISOString(),
+        isTemp: false
+      };
+      
+      // Save updated metadata
+      sessionStorage.setItem('currentInterviewData', JSON.stringify(updatedMetadata));
+      localStorage.setItem(`interview_${realCallId}`, JSON.stringify(updatedMetadata));
+      
+      // Clean up temp entry
+      localStorage.removeItem(`interview_${tempId}`);
+      
+      console.log('✅ Updated metadata with REAL call ID:', realCallId);
+    }
+    
+    this.currentCall = {
+      assistantId,
+      personality: assistantPersonality,
+      jobRole,
+      difficulty,
+      startedAt: new Date(),
+      vapiCallId: result?.id || null
+    };
+    
+    return { 
+      success: true, 
+      callId: result?.id,
+      message: `Interview started with ${assistantPersonality} interviewer`
+    };
+  } catch (error) {
+    console.error('Failed to start interview:', error);
+    throw error;
+  }
+}
   stopInterview() {
     if (this.vapi && this.isCallActive) {
       this.vapi.stop();

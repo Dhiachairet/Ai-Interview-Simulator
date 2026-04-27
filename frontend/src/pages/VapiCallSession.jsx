@@ -16,10 +16,15 @@ import {
 } from '@heroicons/react/24/outline';
 import vapiService from '../services/vapiService';
 import api from '../services/api';
+
 const VapiCallSession = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const chatEndRef = useRef(null);
+  
+  // ✅ Add this flag to prevent duplicate saves
+  const isSavingRef = useRef(false);
+  const hasSavedRef = useRef(false);
   
   const sessionDetails = location.state || {
     personality: 'Strict Technical',
@@ -74,11 +79,10 @@ const VapiCallSession = () => {
   };
   
   const handleCallEnd = () => {
-    console.log('🔚 Vapi call ended');
+    console.log('🔚 Vapi call ended from event');
+    // Don't save here - let the button handle saving
+    // Just update the UI
     setCallStatus('ended');
-    setTimeout(() => {
-      navigate('/history');
-    }, 3000);
   };
   
 const handleMessage = (msg) => {
@@ -202,38 +206,84 @@ vapi.on('message', handleMessage);      vapi.on('status-update', handleStatusUpd
     setIsMuted(newMutedState);
   };
   
- const handleEndCall = async () => {
+const handleEndCall = async () => {
+  // ✅ Prevent duplicate saves
+  if (isSavingRef.current || hasSavedRef.current) {
+    console.log('Already saving or saved, skipping duplicate call');
+    return;
+  }
+  
   if (window.confirm('Are you sure you want to end this interview?')) {
+    isSavingRef.current = true;
+    
     let currentCallId = vapiService.getCurrentVapiCallId();
     
-    // ✅ Retrieve local metadata from sessionStorage
-    const savedMetadata = sessionStorage.getItem('currentInterviewData');
+    console.log('Looking for metadata with call ID:', currentCallId);
+    
     let fallbackMetadata = null;
     
-    if (savedMetadata) {
-      fallbackMetadata = JSON.parse(savedMetadata);
-      console.log('📋 Retrieved local metadata:', fallbackMetadata);
-      
-      // Use the stored call ID if current one is missing
-      if (!currentCallId && fallbackMetadata.vapiCallId) {
-        currentCallId = fallbackMetadata.vapiCallId;
+    // Try sessionStorage first
+    const sessionData = sessionStorage.getItem('currentInterviewData');
+    if (sessionData) {
+      const parsed = JSON.parse(sessionData);
+      // Check if this metadata matches our call (by temp ID or real ID)
+      if (parsed.vapiCallId === currentCallId || 
+          (currentCallId && parsed.vapiCallId === currentCallId) ||
+          (!currentCallId && parsed.isTemp)) {
+        fallbackMetadata = parsed;
+        console.log('📋 Found metadata in sessionStorage:', fallbackMetadata);
       }
     }
     
-    console.log('Ending call with ID:', currentCallId);
+    // If not found, search through all localStorage keys
+    if (!fallbackMetadata) {
+      console.log('Searching localStorage for matching metadata...');
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('interview_')) {
+          const data = localStorage.getItem(key);
+          if (data) {
+            const parsed = JSON.parse(data);
+            if (parsed.vapiCallId === currentCallId) {
+              fallbackMetadata = parsed;
+              console.log('📋 Found matching metadata in localStorage by ID:', fallbackMetadata);
+              break;
+            }
+          }
+        }
+      }
+    }
+    
+    // If we have a currentCallId but no metadata, use the ID to create basic metadata
+    if (!fallbackMetadata && currentCallId && !currentCallId.startsWith('temp_')) {
+      console.log('No metadata found, creating from call ID');
+      fallbackMetadata = {
+        vapiCallId: currentCallId,
+        jobRole: 'Unknown',
+        personality: 'Unknown',
+        difficulty: 'medium'
+      };
+    }
+    
+    // If we still don't have a call ID but have metadata with temp ID, use that
+    if (!currentCallId && fallbackMetadata?.vapiCallId) {
+      currentCallId = fallbackMetadata.vapiCallId;
+      console.log('Using call ID from metadata:', currentCallId);
+    }
+    
+    console.log('Final metadata to save:', fallbackMetadata);
     
     vapiService.stopInterview();
     setCallStatus('ended');
     
     if (currentCallId) {
-      console.log('Saving Vapi call data for ID:', currentCallId);
       try {
-        // ✅ Send fallbackMetadata to backend
         const response = await api.post('/api/interview/save-vapi-call', { 
           vapiCallId: currentCallId,
-          fallbackMetadata: fallbackMetadata  // ← Send the local metadata
+          fallbackMetadata: fallbackMetadata
         });
         console.log('✅ Successfully saved call data:', response.data);
+        hasSavedRef.current = true;
       } catch (error) {
         console.error('Failed to save call data:', error);
       }
@@ -241,7 +291,7 @@ vapi.on('message', handleMessage);      vapi.on('status-update', handleStatusUpd
       console.warn('No call ID available to save');
     }
     
-    // Clear sessionStorage after saving
+    // Clean up
     sessionStorage.removeItem('currentInterviewData');
     
     setTimeout(() => {
