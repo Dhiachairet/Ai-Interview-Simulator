@@ -135,6 +135,16 @@ class VapiInterviewService {
           difficulty: difficulty
         }
       });
+        const callMetadata = {
+      vapiCallId: result?.id,
+      jobRole: jobRole,
+      personality: assistantPersonality,
+      difficulty: difficulty,
+      startedAt: new Date().toISOString()
+    };
+    sessionStorage.setItem('currentInterviewData', JSON.stringify(callMetadata));
+    console.log('✅ Saved interview metadata locally:', callMetadata);
+    
       
       console.log('Vapi start result:', result);
       

@@ -202,22 +202,36 @@ vapi.on('message', handleMessage);      vapi.on('status-update', handleStatusUpd
     setIsMuted(newMutedState);
   };
   
-  const handleEndCall = async () => {
+ const handleEndCall = async () => {
   if (window.confirm('Are you sure you want to end this interview?')) {
-    // Get the current Vapi call ID before stopping
-    const currentCallId = vapiService.currentVapiCallId;
+    let currentCallId = vapiService.getCurrentVapiCallId();
+    
+    // ✅ Retrieve local metadata from sessionStorage
+    const savedMetadata = sessionStorage.getItem('currentInterviewData');
+    let fallbackMetadata = null;
+    
+    if (savedMetadata) {
+      fallbackMetadata = JSON.parse(savedMetadata);
+      console.log('📋 Retrieved local metadata:', fallbackMetadata);
+      
+      // Use the stored call ID if current one is missing
+      if (!currentCallId && fallbackMetadata.vapiCallId) {
+        currentCallId = fallbackMetadata.vapiCallId;
+      }
+    }
+    
     console.log('Ending call with ID:', currentCallId);
     
-    // Stop the call
     vapiService.stopInterview();
     setCallStatus('ended');
     
-    // If we have a call ID, save the data
     if (currentCallId) {
       console.log('Saving Vapi call data for ID:', currentCallId);
       try {
+        // ✅ Send fallbackMetadata to backend
         const response = await api.post('/api/interview/save-vapi-call', { 
-          vapiCallId: currentCallId 
+          vapiCallId: currentCallId,
+          fallbackMetadata: fallbackMetadata  // ← Send the local metadata
         });
         console.log('✅ Successfully saved call data:', response.data);
       } catch (error) {
@@ -227,7 +241,9 @@ vapi.on('message', handleMessage);      vapi.on('status-update', handleStatusUpd
       console.warn('No call ID available to save');
     }
     
-    // Navigate to history after a short delay
+    // Clear sessionStorage after saving
+    sessionStorage.removeItem('currentInterviewData');
+    
     setTimeout(() => {
       navigate('/history');
     }, 2000);

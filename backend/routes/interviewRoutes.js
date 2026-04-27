@@ -100,11 +100,12 @@ router.post('/answer', protect, async (req, res) => {
   }
 });
 
-// ✅ SAVE VAPI CALL DATA ENDPOINT - CORRECTED
+// ✅ SAVE VAPI CALL DATA ENDPOINT - WITH FALLBACK METADATA
 router.post('/save-vapi-call', protect, async (req, res) => {
-  const { vapiCallId } = req.body;
+  const { vapiCallId, fallbackMetadata } = req.body;
   
   console.log('📞 Saving Vapi call:', vapiCallId);
+  console.log('📋 Fallback metadata received:', fallbackMetadata);
   
   if (!vapiCallId) {
     return res.status(400).json({ success: false, error: 'Missing vapiCallId' });
@@ -132,18 +133,24 @@ router.post('/save-vapi-call', protect, async (req, res) => {
     const callData = await vapiResponse.json();
     console.log(`✅ Fetched call ${vapiCallId} from Vapi API`);
     
-    // ✅ CORRECT: Use variableValues for metadata (NOT metadata field)
-    const variableValues = callData.variableValues || {};
+    // ✅ PRIORITIZE: Use fallbackMetadata from frontend FIRST
+    // This is the data we saved locally when the call started
+    const jobRole = fallbackMetadata?.jobRole || 
+                    callData.variableValues?.jobRole || 
+                    'Unknown';
     
-    const jobRole = variableValues.jobRole || 'Unknown';
-    const personality = variableValues.personality || 
+    const personality = fallbackMetadata?.personality || 
+                        callData.variableValues?.personality || 
                         callData.assistant?.name || 
                         'Unknown';
-    const difficulty = variableValues.difficulty || 'medium';
+    
+    const difficulty = fallbackMetadata?.difficulty || 
+                       callData.variableValues?.difficulty || 
+                       'medium';
     
     console.log(`📋 Extracted - Role: ${jobRole}, Personality: ${personality}, Difficulty: ${difficulty}`);
     
-    // Extract data
+    // Extract transcript and analysis (these still come from Vapi API)
     const transcript = callData.artifact?.transcript || '';
     const recordingUrl = callData.artifact?.recordingUrl || '';
     const summary = callData.analysis?.summary || '';
@@ -214,7 +221,6 @@ router.post('/save-vapi-call', protect, async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
-
 // Get interview history for current user
 router.get('/history', protect, async (req, res) => {
   try {
