@@ -52,7 +52,7 @@ const interviewSchema = new mongoose.Schema({
   }],
   status: {
     type: String,
-    enum: ['in-progress', 'completed'],
+    enum: ['in-progress', 'evaluating', 'completed', 'failed'],
     default: 'in-progress'
   },
   startedAt: {

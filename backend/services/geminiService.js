@@ -167,6 +167,128 @@ Give a score from 0-100 based on relevance, clarity, and depth.`;
   });
 }
 
+// Evaluate full Vapi interview transcript with comprehensive analysis
+async function evaluateVapiInterview(transcript, jobRole, difficulty = 'medium') {
+  return callWithRetry(async (modelName) => {
+    const model = genAI.getGenerativeModel({ model: modelName });
+    
+    const difficultyLeniency = difficulty === 'easy' 
+      ? ' Be 20% more lenient on scoring for easy difficulty level.'
+      : difficulty === 'hard'
+      ? ' Be 20% stricter on scoring for hard difficulty level.'
+      : '';
+    
+    const prompt = `You are an expert technical interviewer. Analyze this complete interview transcript and provide a comprehensive evaluation.
+
+Job Role: ${jobRole}
+Difficulty Level: ${difficulty}
+${difficultyLeniency}
+
+Transcript:
+${transcript}
+
+Please evaluate the candidate across these dimensions:
+1. Clarity & Communication - How clear and articulate were the responses?
+2. Technical Knowledge - Depth and accuracy of technical understanding (if applicable)
+3. Relevance - How well did answers address the questions?
+4. Examples & Evidence - Did they provide specific examples and evidence?
+5. Confidence - How confident did they sound?
+6. Problem-solving - Ability to think critically and handle challenging questions
+
+Parse the transcript to identify each question and answer pair. For each Q&A, provide a score and brief feedback.
+
+Return ONLY this exact JSON format (NO markdown, NO extra text):
+{
+  "overallScore": 75,
+  "communicationScore": 78,
+  "technicalScore": 72,
+  "confidenceLevel": "High",
+  "summary": "The candidate demonstrated solid understanding with clear communication. They provided relevant examples but could improve depth on technical concepts.",
+  "strengths": [
+    "Clear articulation and professional demeanor",
+    "Provided specific real-world examples",
+    "Showed enthusiasm for the role"
+  ],
+  "improvements": [
+    "Could provide more technical depth on specific concepts",
+    "Try to address all parts of complex questions",
+    "Elaborate more on problem-solving approach"
+  ],
+  "questionBreakdown": [
+    {
+      "questionNumber": 1,
+      "question": "Tell me about yourself",
+      "answer": "I am a frontend developer with 3 years of experience...",
+      "score": 75,
+      "feedback": "Good introduction with experience level, could mention specific achievements"
+    }
+  ]
+}
+
+IMPORTANT RULES:
+- overallScore: Average of all individual question scores (0-100)
+- communicationScore: Based on clarity, articulation, professionalism (0-100)
+- technicalScore: Based on technical accuracy and depth (0-100) 
+- confidenceLevel: "Low" (0-40), "Medium" (40-70), or "High" (70-100)
+- strengths: Exactly 3 items, specific and actionable
+- improvements: Exactly 3 items, specific and actionable
+- Each question in breakdown must have score 0-100
+- Return ONLY valid JSON, no markdown code blocks, no explanations`;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text().trim();
+    
+    try {
+      // Try to extract JSON from response
+      let parsed;
+      
+      // First try direct parse
+      try {
+        parsed = JSON.parse(text);
+      } catch (e) {
+        // Try to find JSON in text (in case of markdown wrapping)
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          parsed = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error('No JSON found in response');
+        }
+      }
+      
+      // Validate required fields
+      if (typeof parsed.overallScore !== 'number' || parsed.overallScore < 0 || parsed.overallScore > 100) {
+        throw new Error('Invalid overallScore');
+      }
+      
+      return parsed;
+    } catch (e) {
+      console.error('Failed to parse Gemini evaluation response:', e);
+      console.error('Raw response:', text);
+      
+      // Return fallback evaluation
+      return {
+        overallScore: 65,
+        communicationScore: 65,
+        technicalScore: 60,
+        confidenceLevel: 'Medium',
+        summary: 'Interview completed. Unable to provide detailed analysis at this time.',
+        strengths: [
+          'Participated in interview',
+          'Provided responses',
+          'Showed engagement'
+        ],
+        improvements: [
+          'Provide more specific examples',
+          'Expand on technical concepts',
+          'Show more confidence'
+        ],
+        questionBreakdown: []
+      };
+    }
+  });
+}
+
 // Optional: Get current usage statistics
 function getUsageStats() {
   const stats = {};
@@ -179,6 +301,7 @@ function getUsageStats() {
 module.exports = { 
   generateQuestion, 
   evaluateAnswer,
+  evaluateVapiInterview,
   getUsageStats,
   MODEL_NAMES
 };

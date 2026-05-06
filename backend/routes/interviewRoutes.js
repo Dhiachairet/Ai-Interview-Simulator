@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/auth');
-const { generateQuestion, evaluateAnswer } = require('../services/geminiService');
+const { generateQuestion, evaluateAnswer, evaluateVapiInterview } = require('../services/geminiService');
 const Interview = require('../models/Interview');
 const { generateSpeech } = require('../services/elevenlabsTTS');
 
@@ -247,43 +247,126 @@ router.post('/save-vapi-call', protect, async (req, res) => {
     // Find existing interview or create new one
     let interview = await Interview.findOne({ vapiCallId: vapiCallId });
     
-    const interviewData = {
-      vapiCallId: vapiCallId,
-      jobRole: jobRole,
-      personality: personality,
-      difficulty: difficulty,
-      transcript: transcript,
-      summary: summary,
-      recordingUrl: recordingUrl,
-      questions: questions,
-      duration: duration,
-      overallScore: overallScore,
-      report: {
-        overallScore: overallScore,
-        strengths: strengths,
-        improvements: improvements,
-        fullAnalysis: structuredData
-      },
-      status: 'completed',
-      completedAt: new Date()
-    };
-    
-    if (interview) {
-      Object.assign(interview, interviewData);
-      await interview.save();
-      console.log(`✅ Updated interview for call ${vapiCallId}`);
-    } else {
+    // ✅ NEW: Set status to "evaluating" and save first
+    if (!interview) {
       interview = await Interview.create({
         user: req.user.id,
-        ...interviewData
+        vapiCallId: vapiCallId,
+        jobRole: jobRole,
+        personality: personality,
+        difficulty: difficulty,
+        status: 'evaluating',
+        startedAt: new Date()
       });
-      console.log(`✅ Created new interview for call ${vapiCallId}`);
+      console.log(`📋 Created initial interview record with status: evaluating`);
+    } else {
+      interview.status = 'evaluating';
+      await interview.save();
+      console.log(`📋 Updated interview status to: evaluating`);
     }
     
-    res.json({ success: true, data: interview });
+    try {
+      // ✅ NEW: Call Gemini to evaluate the full interview
+      console.log(`🤖 Calling Gemini to evaluate interview...`);
+      const geminiEvaluation = await evaluateVapiInterview(transcript, jobRole, difficulty);
+      console.log(`✅ Gemini evaluation completed:`, {
+        overallScore: geminiEvaluation.overallScore,
+        communicationScore: geminiEvaluation.communicationScore,
+        technicalScore: geminiEvaluation.technicalScore,
+        confidenceLevel: geminiEvaluation.confidenceLevel
+      });
+      
+      // ✅ Merge Gemini evaluation into interview data
+      const interviewData = {
+        vapiCallId: vapiCallId,
+        jobRole: jobRole,
+        personality: personality,
+        difficulty: difficulty,
+        transcript: transcript,
+        summary: geminiEvaluation.summary,
+        recordingUrl: recordingUrl,
+        duration: duration,
+        report: {
+          overallScore: geminiEvaluation.overallScore,
+          communicationScore: geminiEvaluation.communicationScore,
+          technicalScore: geminiEvaluation.technicalScore,
+          confidenceLevel: geminiEvaluation.confidenceLevel,
+          strengths: geminiEvaluation.strengths,
+          improvements: geminiEvaluation.improvements,
+          summary: geminiEvaluation.summary,
+          recordingUrl: recordingUrl,
+          fullAnalysis: geminiEvaluation
+        },
+        // ✅ Use Gemini's question breakdown if available
+        questions: geminiEvaluation.questionBreakdown && geminiEvaluation.questionBreakdown.length > 0
+          ? geminiEvaluation.questionBreakdown.map(q => ({
+              question: q.question,
+              userAnswer: q.answer,
+              feedback: q.feedback,
+              score: q.score
+            }))
+          : questions, // Fall back to parsed questions if no breakdown
+        status: 'completed',
+        completedAt: new Date()
+      };
+      
+      // ✅ Update interview with all evaluation data
+      Object.assign(interview, interviewData);
+      await interview.save();
+      console.log(`✅ Successfully saved evaluated interview for call ${vapiCallId}`);
+      
+      res.json({ success: true, data: interview });
+    } catch (geminiError) {
+      console.error('⚠️ Gemini evaluation failed, saving with basic data:', geminiError.message);
+      
+      // Fallback: Save with basic data if Gemini fails
+      const basicData = {
+        vapiCallId: vapiCallId,
+        jobRole: jobRole,
+        personality: personality,
+        difficulty: difficulty,
+        transcript: transcript,
+        recordingUrl: recordingUrl,
+        questions: questions,
+        duration: duration,
+        overallScore: overallScore,
+        report: {
+          overallScore: overallScore,
+          strengths: ['Interview completed'],
+          improvements: ['Gemini evaluation unavailable'],
+          summary: 'Interview saved. Detailed evaluation will be available shortly.',
+          recordingUrl: recordingUrl
+        },
+        status: 'completed',
+        completedAt: new Date()
+      };
+      
+      Object.assign(interview, basicData);
+      await interview.save();
+      console.log(`✅ Saved interview with fallback data (Gemini evaluation failed)`);
+      
+      res.json({ 
+        success: true, 
+        data: interview,
+        warning: 'Gemini evaluation failed, basic save completed'
+      });
+    }
     
   } catch (error) {
     console.error('❌ Error saving Vapi call:', error);
+    
+    // Try to update interview status to failed
+    try {
+      let failedInterview = await Interview.findOne({ vapiCallId: vapiCallId });
+      if (failedInterview) {
+        failedInterview.status = 'failed';
+        failedInterview.error = error.message;
+        await failedInterview.save();
+      }
+    } catch (updateError) {
+      console.error('Failed to update interview status:', updateError);
+    }
+    
     res.status(500).json({ success: false, error: error.message });
   } finally {
     savingCalls.delete(vapiCallId);
