@@ -56,23 +56,21 @@ const History = () => {
           } else if (interview.overallScore && interview.overallScore > 0) {
             score = interview.overallScore;
           } else if (interview.questions?.length > 0) {
-            // Calculate average from question scores
             const scores = interview.questions.filter(q => q.score && q.score > 0).map(q => q.score);
             if (scores.length > 0) {
               score = scores.reduce((a, b) => a + b, 0) / scores.length;
             }
           }
           
-          // Determine display status
-          let displayStatus = interview.status;
+          // Determine display status - only show completed and evaluating
+          let displayStatus = 'other';
           if (interview.status === 'evaluating') {
             displayStatus = 'evaluating';
-          } else if (interview.status === 'failed') {
-            displayStatus = 'failed';
           } else if (interview.status === 'completed') {
             displayStatus = 'completed';
           } else {
-            displayStatus = 'in-progress';
+            // Skip in-progress and failed interviews
+            return null;
           }
           
           return {
@@ -82,7 +80,7 @@ const History = () => {
             questionCount: interview.questions?.length || 0,
             answeredCount: interview.questions?.filter(q => q.userAnswer).length || 0
           };
-        });
+        }).filter(interview => interview !== null); // Remove null entries (in-progress/failed)
         
         // Sort by date (newest first)
         formattedInterviews.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -141,7 +139,7 @@ const History = () => {
       setDeletingId(interviewId);
       try {
         await api.delete(`/api/interview/${interviewId}`);
-        await fetchHistory(); // Refresh the list
+        await fetchHistory();
       } catch (error) {
         console.error('Error deleting interview:', error);
         alert('Failed to delete interview');
@@ -155,11 +153,9 @@ const History = () => {
     navigate('/interview-config');
   };
 
-  // Calculate stats
+  // Calculate stats - count only completed interviews
   const completedInterviews = interviews.filter(i => i.displayStatus === 'completed');
-  const inProgressInterviews = interviews.filter(i => i.displayStatus === 'in-progress');
   const evaluatingInterviews = interviews.filter(i => i.displayStatus === 'evaluating');
-  const failedInterviews = interviews.filter(i => i.displayStatus === 'failed');
   const avgScore = completedInterviews.length > 0
     ? Math.round(completedInterviews.reduce((acc, i) => acc + (i.displayScore || 0), 0) / completedInterviews.length)
     : 0;
@@ -282,10 +278,10 @@ const History = () => {
               Interview History
             </h1>
             <p className="text-gray-400 text-lg">
-              Review your past interviews and track your progress
+              Review your completed interviews and track your progress
             </p>
             <p className="text-gray-500 text-sm mt-1">
-              {interviews.length} total interviews • {completedInterviews.length} completed • {inProgressInterviews.length} in progress
+              {interviews.length} total interviews • {completedInterviews.length} completed • {evaluatingInterviews.length} evaluating
             </p>
           </motion.div>
 
@@ -295,7 +291,7 @@ const History = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8"
+              className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8"
             >
               <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4">
                 <div className="flex items-center justify-between">
@@ -317,18 +313,6 @@ const History = () => {
                   </div>
                   <div className="p-3 bg-green-500/20 rounded-xl">
                     <TrophyIcon className="h-6 w-6 text-green-400" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-gray-400 text-sm">In Progress</p>
-                    <p className="text-3xl font-bold text-yellow-400">{inProgressInterviews.length}</p>
-                  </div>
-                  <div className="p-3 bg-yellow-500/20 rounded-xl">
-                    <PlayIcon className="h-6 w-6 text-yellow-400" />
                   </div>
                 </div>
               </div>
@@ -357,7 +341,7 @@ const History = () => {
             >
               <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
                 <ArrowPathIcon className="h-6 w-6 text-purple-400 animate-spin" />
-                Evaluating ({evaluatingInterviews.length})
+                Processing ({evaluatingInterviews.length})
               </h2>
               <div className="grid gap-4">
                 {evaluatingInterviews.map((interview, index) => (
@@ -400,88 +384,6 @@ const History = () => {
                           </div>
                         </div>
                         <p className="text-xs text-gray-500 mt-2">AI is analyzing your responses. This should complete shortly.</p>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </motion.div>
-          )}
-
-          {/* In Progress Section */}
-          {inProgressInterviews.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.15 }}
-              className="mb-8"
-            >
-              <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
-                <PlayIcon className="h-6 w-6 text-yellow-400" />
-                In Progress ({inProgressInterviews.length})
-              </h2>
-              <div className="grid gap-4">
-                {inProgressInterviews.map((interview, index) => (
-                  <motion.div
-                    key={interview._id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                    className="bg-gradient-to-r from-yellow-500/10 to-orange-500/10 backdrop-blur-xl border border-yellow-500/30 rounded-2xl p-6"
-                  >
-                    <div className="flex justify-between items-start flex-wrap gap-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-3">
-                          <h3 className="text-xl font-semibold text-white">
-                            {interview.jobRole}
-                          </h3>
-                          <div className="px-3 py-1 rounded-full text-sm font-medium bg-yellow-500/20 border border-yellow-500/30 text-yellow-400">
-                            {interview.questionCount > 0 ? `${interview.answeredCount}/${interview.questionCount} Questions` : 'Not Started'}
-                          </div>
-                        </div>
-                        
-                        <div className="flex flex-wrap gap-2 mb-3">
-                          <span className="px-3 py-1 bg-purple-500/20 text-purple-400 rounded-full text-sm">
-                            {interview.personality}
-                          </span>
-                          <span className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-sm">
-                            {interview.difficulty}
-                          </span>
-                        </div>
-                        
-                        <div className="flex items-center gap-4 text-sm text-gray-400">
-                          <div className="flex items-center gap-1">
-                            <CalendarIcon className="h-4 w-4" />
-                            <span>{formatDate(interview.createdAt)}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <ClockIcon className="h-4 w-4" />
-                            <span>{new Date(interview.createdAt).toLocaleTimeString()}</span>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-3">
-                        <motion.button
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => handleViewReport(interview._id)}
-                          className="px-6 py-2.5 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg text-white font-medium text-sm flex items-center gap-2 shadow-lg shadow-blue-500/25"
-                        >
-                          <DocumentTextIcon className="h-4 w-4" />
-                          View Details
-                        </motion.button>
-                        <button
-                          onClick={(e) => handleDeleteInterview(interview._id, e)}
-                          disabled={deletingId === interview._id}
-                          className="p-2 rounded-lg bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition disabled:opacity-50"
-                        >
-                          {deletingId === interview._id ? (
-                            <ArrowPathIcon className="h-5 w-5 animate-spin" />
-                          ) : (
-                            <TrashIcon className="h-5 w-5" />
-                          )}
-                        </button>
                       </div>
                     </div>
                   </motion.div>
@@ -576,8 +478,8 @@ const History = () => {
               <div className="inline-flex p-4 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full mb-6">
                 <ClockIcon className="h-8 w-8 text-white" />
               </div>
-              <h3 className="text-2xl font-semibold text-white mb-2">No Interviews Yet</h3>
-              <p className="text-gray-400 mb-6">Start your first interview to see your history here</p>
+              <h3 className="text-2xl font-semibold text-white mb-2">No Completed Interviews Yet</h3>
+              <p className="text-gray-400 mb-6">Complete your first interview to see your history here</p>
               <button
                 onClick={handleStartNewInterview}
                 className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg text-white font-medium hover:opacity-90 transition"

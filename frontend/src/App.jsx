@@ -13,7 +13,7 @@ import History from './pages/History';
 import VapiCallSession from './pages/VapiCallSession';
 import AdminDashboard from './pages/AdminDashboard';
 import { useAuth } from './context/AuthContext';
-
+import Reports from './pages/Reports';
 const AdminRoute = ({ children }) => {
   const { user, loading } = useAuth();
 
@@ -50,6 +50,8 @@ function App() {
           <Route path="/simple-test" element={<SimpleCharacterTest />} /> 
           <Route path="/history" element={<History />} />
           <Route path="/vapi-call" element={<VapiCallSession />} />
+          <Route path="/reports" element={<Reports />} />
+
           <Route
             path="/admin"
             element={
