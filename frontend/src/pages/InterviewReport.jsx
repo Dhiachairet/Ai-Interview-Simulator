@@ -143,6 +143,10 @@ const InterviewReport = () => {
   const strengths = interview.report?.strengths || [];
   const improvements = interview.report?.improvements || [];
   const questions = interview.questions || [];
+  const communicationScore = interview.report?.communicationScore || overallScore;
+  const technicalScore = interview.report?.technicalScore || overallScore;
+  const confidenceLevel = interview.report?.confidenceLevel || 'Unknown';
+  const summary = interview.report?.summary || 'No summary available';
 
   return (
     <div className="fixed inset-0 bg-[#0A0F1E] text-white flex overflow-hidden">
@@ -276,7 +280,7 @@ const InterviewReport = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8"
+            className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8"
           >
             <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4">
               <div className="flex items-center gap-3">
@@ -301,7 +305,71 @@ const InterviewReport = () => {
               </div>
               <p className="text-lg font-semibold mt-1">{formatDuration(interview.duration)}</p>
             </div>
+
+            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4">
+              <div className="flex items-center gap-3">
+                <SparklesIcon className="h-5 w-5 text-purple-400" />
+                <span className="text-gray-400 text-sm">Confidence</span>
+              </div>
+              <p className="text-lg font-semibold mt-1">{confidenceLevel}</p>
+            </div>
           </motion.div>
+
+          {/* Communication & Technical Scores */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8"
+          >
+            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-blue-400">Communication Score</h3>
+                <span className="text-2xl font-bold text-blue-400">{Math.round(communicationScore)}%</span>
+              </div>
+              <div className="w-full bg-white/10 rounded-full h-2">
+                <motion.div
+                  className="bg-gradient-to-r from-blue-500 to-cyan-500 h-2 rounded-full"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${communicationScore}%` }}
+                  transition={{ duration: 1 }}
+                />
+              </div>
+              <p className="text-xs text-gray-400 mt-2">Clarity, articulation, and professional communication</p>
+            </div>
+
+            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-green-400">Technical Score</h3>
+                <span className="text-2xl font-bold text-green-400">{Math.round(technicalScore)}%</span>
+              </div>
+              <div className="w-full bg-white/10 rounded-full h-2">
+                <motion.div
+                  className="bg-gradient-to-r from-green-500 to-emerald-500 h-2 rounded-full"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${technicalScore}%` }}
+                  transition={{ duration: 1 }}
+                />
+              </div>
+              <p className="text-xs text-gray-400 mt-2">Technical knowledge and depth of understanding</p>
+            </div>
+          </motion.div>
+
+          {/* Summary Section */}
+          {summary && summary !== 'No summary available' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 mb-8"
+            >
+              <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
+                <DocumentTextIcon className="h-6 w-6 text-yellow-400" />
+                Interview Summary
+              </h2>
+              <p className="text-gray-300 leading-relaxed">{summary}</p>
+            </motion.div>
+          )}
 
           {/* Strengths & Improvements */}
           {(strengths.length > 0 || improvements.length > 0) && (

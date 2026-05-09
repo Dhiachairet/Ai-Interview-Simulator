@@ -49,27 +49,36 @@ const History = () => {
       if (response.data.success) {
         // Transform the data to ensure consistent format
         const formattedInterviews = response.data.data.map(interview => {
-          // Calculate if completed (has answers or has overallScore)
-          const hasAnswers = interview.questions?.some(q => q.userAnswer);
-          const hasScore = interview.report?.overallScore > 0;
-          const isActuallyCompleted = hasAnswers || hasScore || interview.status === 'completed';
-          
           // Get the score from various possible locations
           let score = 0;
-          if (interview.report?.overallScore) {
+          if (interview.report?.overallScore && interview.report.overallScore > 0) {
             score = interview.report.overallScore;
+          } else if (interview.overallScore && interview.overallScore > 0) {
+            score = interview.overallScore;
           } else if (interview.questions?.length > 0) {
             // Calculate average from question scores
-            const scores = interview.questions.filter(q => q.score).map(q => q.score);
+            const scores = interview.questions.filter(q => q.score && q.score > 0).map(q => q.score);
             if (scores.length > 0) {
               score = scores.reduce((a, b) => a + b, 0) / scores.length;
             }
           }
           
+          // Determine display status
+          let displayStatus = interview.status;
+          if (interview.status === 'evaluating') {
+            displayStatus = 'evaluating';
+          } else if (interview.status === 'failed') {
+            displayStatus = 'failed';
+          } else if (interview.status === 'completed') {
+            displayStatus = 'completed';
+          } else {
+            displayStatus = 'in-progress';
+          }
+          
           return {
             ...interview,
             displayScore: Math.round(score),
-            displayStatus: isActuallyCompleted ? 'completed' : 'in-progress',
+            displayStatus: displayStatus,
             questionCount: interview.questions?.length || 0,
             answeredCount: interview.questions?.filter(q => q.userAnswer).length || 0
           };
@@ -149,6 +158,8 @@ const History = () => {
   // Calculate stats
   const completedInterviews = interviews.filter(i => i.displayStatus === 'completed');
   const inProgressInterviews = interviews.filter(i => i.displayStatus === 'in-progress');
+  const evaluatingInterviews = interviews.filter(i => i.displayStatus === 'evaluating');
+  const failedInterviews = interviews.filter(i => i.displayStatus === 'failed');
   const avgScore = completedInterviews.length > 0
     ? Math.round(completedInterviews.reduce((acc, i) => acc + (i.displayScore || 0), 0) / completedInterviews.length)
     : 0;
@@ -332,6 +343,67 @@ const History = () => {
                     <SparklesIcon className="h-6 w-6 text-purple-400" />
                   </div>
                 </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Evaluating Section */}
+          {evaluatingInterviews.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15 }}
+              className="mb-8"
+            >
+              <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
+                <ArrowPathIcon className="h-6 w-6 text-purple-400 animate-spin" />
+                Evaluating ({evaluatingInterviews.length})
+              </h2>
+              <div className="grid gap-4">
+                {evaluatingInterviews.map((interview, index) => (
+                  <motion.div
+                    key={interview._id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                    className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 backdrop-blur-xl border border-purple-500/30 rounded-2xl p-6"
+                  >
+                    <div className="flex justify-between items-start flex-wrap gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-3">
+                          <h3 className="text-xl font-semibold text-white">
+                            {interview.jobRole}
+                          </h3>
+                          <div className="px-3 py-1 rounded-full text-sm font-medium bg-purple-500/20 border border-purple-500/30 text-purple-400 flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></div>
+                            Analyzing...
+                          </div>
+                        </div>
+                        
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          <span className="px-3 py-1 bg-purple-500/20 text-purple-400 rounded-full text-sm">
+                            {interview.personality}
+                          </span>
+                          <span className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-sm">
+                            {interview.difficulty}
+                          </span>
+                        </div>
+                        
+                        <div className="flex items-center gap-4 text-sm text-gray-400">
+                          <div className="flex items-center gap-1">
+                            <CalendarIcon className="h-4 w-4" />
+                            <span>{formatDate(interview.createdAt)}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <ClockIcon className="h-4 w-4" />
+                            <span>{new Date(interview.createdAt).toLocaleTimeString()}</span>
+                          </div>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-2">AI is analyzing your responses. This should complete shortly.</p>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
               </div>
             </motion.div>
           )}

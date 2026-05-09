@@ -5,6 +5,7 @@ import './App.css'
 import Home from './pages/Home'
 import InterviewConfig from './pages/InterviewConfig'
 import InterviewSession from './pages/InterviewSession'
+import InterviewReport from './pages/InterviewReport'
 import CharacterTest from './pages/CharacterTest'
 import SimpleCharacterTest from './pages/SimpleCharacterTest'  // Add this
 import { AuthProvider } from './context/AuthContext'
@@ -12,7 +13,6 @@ import History from './pages/History';
 import VapiCallSession from './pages/VapiCallSession';
 import AdminDashboard from './pages/AdminDashboard';
 import { useAuth } from './context/AuthContext';
-import InterviewReport from './pages/InterviewReport';
 
 const AdminRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -45,12 +45,11 @@ function App() {
           <Route path="/register" element={<Register />} />
           <Route path="/interview-config" element={<InterviewConfig />} />
           <Route path="/interview-session" element={<InterviewSession />} />
+          <Route path="/interview-report/:id" element={<InterviewReport />} />
           <Route path="/character-test" element={<CharacterTest />} />
           <Route path="/simple-test" element={<SimpleCharacterTest />} /> 
           <Route path="/history" element={<History />} />
           <Route path="/vapi-call" element={<VapiCallSession />} />
-          <Route path="/interview-report/:id" element={<InterviewReport />} />
-
           <Route
             path="/admin"
             element={
