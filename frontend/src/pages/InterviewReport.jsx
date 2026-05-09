@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useReactToPrint } from 'react-to-print';
 import { 
   HomeIcon,
   PlayIcon,
@@ -21,6 +22,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+import ReportPDF from '../components/ReportPDF';
 
 const InterviewReport = () => {
   const navigate = useNavigate();
@@ -29,6 +31,8 @@ const InterviewReport = () => {
   const [interview, setInterview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isPrinting, setIsPrinting] = useState(false);
+  const componentRef = useRef();
 
   useEffect(() => {
     fetchInterviewDetails();
@@ -57,6 +61,30 @@ const InterviewReport = () => {
     logout();
     navigate('/login');
   };
+
+  const handlePrint = useReactToPrint({
+    contentRef: componentRef,
+    documentTitle: `Interview_Report_${interview?.jobRole || 'interview'}_${new Date().toISOString().split('T')[0]}`,
+    onBeforeGetContent: () => {
+      setIsPrinting(true);
+      return Promise.resolve();
+    },
+    onAfterPrint: () => {
+      setIsPrinting(false);
+    },
+    pageStyle: `
+      @media print {
+        @page {
+          size: A4;
+          margin: 1.5cm;
+        }
+        body {
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+      }
+    `
+  });
 
   const navigationItems = [
     { name: 'Dashboard', icon: <HomeIcon className="h-5 w-5" />, path: '/' },
@@ -95,12 +123,10 @@ const InterviewReport = () => {
   const calculateOverallScore = () => {
     if (!interview) return 0;
     
-    // If report has overallScore, use it
     if (interview.report?.overallScore && interview.report.overallScore > 0) {
       return interview.report.overallScore;
     }
     
-    // Calculate from question scores
     if (interview.questions && interview.questions.length > 0) {
       const scores = interview.questions.filter(q => q.score && q.score > 0).map(q => q.score);
       if (scores.length > 0) {
@@ -497,14 +523,38 @@ const InterviewReport = () => {
               Start New Interview
             </button>
             <button
-              onClick={() => window.print()}
-              className="px-6 py-3 bg-white/10 rounded-xl text-white font-medium hover:bg-white/20 transition"
+              onClick={handlePrint}
+              disabled={isPrinting}
+              className="px-6 py-3 bg-white/10 rounded-xl text-white font-medium hover:bg-white/20 transition disabled:opacity-50"
             >
-              Print Report
+              {isPrinting ? (
+                <>
+                  <div className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                  Generating PDF...
+                </>
+              ) : (
+                'Download PDF Report'
+              )}
             </button>
           </motion.div>
         </div>
       </main>
+
+      {/* Hidden PDF component - positioned off-screen to be printable */}
+      <div style={{ position: 'absolute', top: '-9999px', left: '-9999px', height: 0, overflow: 'hidden' }}>
+        <ReportPDF
+          ref={componentRef}
+          interview={interview}
+          overallScore={overallScore}
+          communicationScore={communicationScore}
+          technicalScore={technicalScore}
+          confidenceLevel={confidenceLevel}
+          summary={summary}
+          strengths={strengths}
+          improvements={improvements}
+          questions={questions}
+        />
+      </div>
 
       <style jsx>{`
         @keyframes blob {
