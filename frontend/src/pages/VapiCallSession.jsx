@@ -12,7 +12,9 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
   SpeakerWaveIcon,
-  SpeakerXMarkIcon
+  SpeakerXMarkIcon,
+  UserIcon,
+  CpuChipIcon
 } from '@heroicons/react/24/outline';
 import vapiService from '../services/vapiService';
 import api from '../services/api';
@@ -22,9 +24,12 @@ const VapiCallSession = () => {
   const location = useLocation();
   const chatEndRef = useRef(null);
   
-  // ✅ Add this flag to prevent duplicate saves
+  // ✅ Add flag to prevent duplicate saves
   const isSavingRef = useRef(false);
   const hasSavedRef = useRef(false);
+  
+  // ✅ Add ref for pending message timeout
+  const pendingMessageRef = useRef(null);
   
   const sessionDetails = location.state || {
     personality: 'Strict Technical',
@@ -38,6 +43,7 @@ const VapiCallSession = () => {
   const [errorMessage, setErrorMessage] = useState(null);
   const [callDuration, setCallDuration] = useState(0);
   const [showChat, setShowChat] = useState(true);
+  const [isAiSpeaking, setIsAiSpeaking] = useState(false);
   
   useEffect(() => {
     let timer;
@@ -55,24 +61,6 @@ const VapiCallSession = () => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
   
-  // Check if message contains ending phrases
-  const containsEndPhrases = (text) => {
-    if (!text) return false;
-    const lowerText = text.toLowerCase();
-    const endPhrases = [
-      'goodbye', 
-      'thank you for your time', 
-      'thanks for the interview', 
-      'interview complete',
-      'have a great day',
-      'this concludes',
-      'end of interview',
-      'no more questions'
-    ];
-    return endPhrases.some(phrase => lowerText.includes(phrase));
-  };
-  
-  // Define event handlers as functions
   const handleCallStart = () => {
     console.log('📞 Vapi call started');
     setCallStatus('active');
@@ -80,48 +68,89 @@ const VapiCallSession = () => {
   
   const handleCallEnd = () => {
     console.log('🔚 Vapi call ended from event');
-    // Don't save here - let the button handle saving
-    // Just update the UI
     setCallStatus('ended');
   };
-  
+  const transcriptBufferRef = useRef({}); // { role: { text, timer } }
+
 const handleMessage = (msg) => {
-  if (msg.type === 'transcript' && msg.transcript) {
+  if (msg.type !== 'transcript' || !msg.transcript) return;
+
+  const role = msg.role === 'assistant' ? 'assistant' : 'user';
+  const newText = msg.transcript;
+  const buffer = transcriptBufferRef.current;
+
+  if (buffer[role]?.timer) clearTimeout(buffer[role].timer);
+
+  const currentText = buffer[role]?.text ?? '';
+  const bestText = newText.length >= currentText.length ? newText : currentText;
+
+  if (msg.final) {
+    // ✅ ONLY commit to transcript on final
+    delete transcriptBufferRef.current[role];
+
     setTranscripts(prev => {
       const last = prev[prev.length - 1];
-
-      // If same speaker and last message not final → update it
-      if (
-        last &&
-        last.role === msg.role &&
-        !last.isFinal
-      ) {
+      // Replace the in-progress preview entry if it exists
+      if (last && last.role === role && last.isPreview) {
         const updated = [...prev];
         updated[updated.length - 1] = {
-          ...last,
-          text: msg.transcript,
-          isFinal: msg.final || false,
-          timestamp: new Date().toLocaleTimeString()
+          text: bestText,
+          role,
+          isFinal: true,
+          isPreview: false,
+          timestamp: new Date().toLocaleTimeString(),
         };
         return updated;
       }
-
-      // Otherwise add new message
+      // No preview entry yet, just append
       return [
         ...prev,
-        {
-          text: msg.transcript,
-          role: msg.role === 'assistant' ? 'assistant' : 'user',
-          timestamp: new Date().toLocaleTimeString(),
-          isFinal: msg.final || false
-        }
+        { text: bestText, role, isFinal: true, isPreview: false, timestamp: new Date().toLocaleTimeString() },
       ];
     });
 
-    setTimeout(() => {
-      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
+    if (role === 'assistant') setTimeout(() => setIsAiSpeaking(false), 800);
+
+  } else {
+    // ✅ Non-final: only update the preview entry, never flush
+    buffer[role] = {
+      text: bestText,
+      // Fallback flush after 2s of total silence (edge case: final never arrives)
+      timer: setTimeout(() => {
+        const stuck = transcriptBufferRef.current[role]?.text;
+        if (!stuck) return;
+        delete transcriptBufferRef.current[role];
+        setTranscripts(prev => {
+          const last = prev[prev.length - 1];
+          if (last && last.role === role && last.isPreview) {
+            const updated = [...prev];
+            updated[updated.length - 1] = { ...last, text: stuck, isFinal: true, isPreview: false };
+            return updated;
+          }
+          return [...prev, { text: stuck, role, isFinal: true, isPreview: false, timestamp: new Date().toLocaleTimeString() }];
+        });
+      }, 2000),
+    };
+
+    // Show/update a single preview entry (isPreview flag keeps it identifiable)
+    setTranscripts(prev => {
+      const last = prev[prev.length - 1];
+      if (last && last.role === role && last.isPreview) {
+        // Update existing preview in place
+        const updated = [...prev];
+        updated[updated.length - 1] = { ...last, text: bestText };
+        return updated;
+      }
+      // Create a new preview entry
+      return [
+        ...prev,
+        { text: bestText, role, isFinal: false, isPreview: true, timestamp: new Date().toLocaleTimeString() },
+      ];
+    });
   }
+
+  if (role === 'assistant') setIsAiSpeaking(true);
+  setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
 };
   
   const handleStatusUpdate = (status) => {
@@ -138,12 +167,9 @@ const handleMessage = (msg) => {
   };
   
   useEffect(() => {
-    // Get the Vapi instance
     const vapi = vapiService.vapi;
     
     if (!vapi) {
-      console.warn('Vapi instance not available, waiting...');
-      // Wait a bit and try again
       const checkInterval = setInterval(() => {
         if (vapiService.vapi) {
           console.log('Vapi instance found, setting up listeners');
@@ -152,7 +178,6 @@ const handleMessage = (msg) => {
         }
       }, 500);
       
-      // Timeout after 10 seconds
       const timeout = setTimeout(() => {
         clearInterval(checkInterval);
         console.error('Vapi instance never became available');
@@ -169,12 +194,18 @@ const handleMessage = (msg) => {
     setupEventListeners(vapi);
     
     return () => {
+      // Cleanup pending timeout
+      if (pendingMessageRef.current) {
+        clearTimeout(pendingMessageRef.current);
+      }
+      
       // Cleanup event listeners
       if (vapiService.vapi) {
         try {
           vapiService.vapi.off('call-start', handleCallStart);
           vapiService.vapi.off('call-end', handleCallEnd);
-vapiService.vapi.off('message', handleMessage);          vapiService.vapi.off('status-update', handleStatusUpdate);
+          vapiService.vapi.off('message', handleMessage);
+          vapiService.vapi.off('status-update', handleStatusUpdate);
           vapiService.vapi.off('error', handleError);
         } catch (e) {
           console.warn('Error cleaning up event listeners:', e);
@@ -193,7 +224,8 @@ vapiService.vapi.off('message', handleMessage);          vapiService.vapi.off('s
     try {
       vapi.on('call-start', handleCallStart);
       vapi.on('call-end', handleCallEnd);
-vapi.on('message', handleMessage);      vapi.on('status-update', handleStatusUpdate);
+      vapi.on('message', handleMessage);
+      vapi.on('status-update', handleStatusUpdate);
       vapi.on('error', handleError);
       console.log('Vapi event listeners configured successfully');
     } catch (error) {
@@ -206,99 +238,60 @@ vapi.on('message', handleMessage);      vapi.on('status-update', handleStatusUpd
     setIsMuted(newMutedState);
   };
   
-const handleEndCall = async () => {
-  // ✅ Prevent duplicate saves
-  if (isSavingRef.current || hasSavedRef.current) {
-    console.log('Already saving or saved, skipping duplicate call');
-    return;
-  }
-  
-  if (window.confirm('Are you sure you want to end this interview?')) {
-    isSavingRef.current = true;
-    
-    let currentCallId = vapiService.getCurrentVapiCallId();
-    
-    console.log('Looking for metadata with call ID:', currentCallId);
-    
-    let fallbackMetadata = null;
-    
-    // Try sessionStorage first
-    const sessionData = sessionStorage.getItem('currentInterviewData');
-    if (sessionData) {
-      const parsed = JSON.parse(sessionData);
-      // Check if this metadata matches our call (by temp ID or real ID)
-      if (parsed.vapiCallId === currentCallId || 
-          (currentCallId && parsed.vapiCallId === currentCallId) ||
-          (!currentCallId && parsed.isTemp)) {
-        fallbackMetadata = parsed;
-        console.log('📋 Found metadata in sessionStorage:', fallbackMetadata);
-      }
+  const handleEndCall = async () => {
+    if (isSavingRef.current || hasSavedRef.current) {
+      console.log('Already saving or saved, skipping duplicate call');
+      return;
     }
     
-    // If not found, search through all localStorage keys
-    if (!fallbackMetadata) {
-      console.log('Searching localStorage for matching metadata...');
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith('interview_')) {
-          const data = localStorage.getItem(key);
-          if (data) {
-            const parsed = JSON.parse(data);
-            if (parsed.vapiCallId === currentCallId) {
-              fallbackMetadata = parsed;
-              console.log('📋 Found matching metadata in localStorage by ID:', fallbackMetadata);
-              break;
-            }
-          }
+    if (window.confirm('Are you sure you want to end this interview?')) {
+      isSavingRef.current = true;
+      
+      let currentCallId = vapiService.getCurrentVapiCallId();
+      let fallbackMetadata = null;
+      
+      const sessionData = sessionStorage.getItem('currentInterviewData');
+      if (sessionData) {
+        const parsed = JSON.parse(sessionData);
+        if (parsed.vapiCallId === currentCallId || 
+            (currentCallId && parsed.vapiCallId === currentCallId) ||
+            (!currentCallId && parsed.isTemp)) {
+          fallbackMetadata = parsed;
         }
       }
-    }
-    
-    // If we have a currentCallId but no metadata, use the ID to create basic metadata
-    if (!fallbackMetadata && currentCallId && !currentCallId.startsWith('temp_')) {
-      console.log('No metadata found, creating from call ID');
-      fallbackMetadata = {
-        vapiCallId: currentCallId,
-        jobRole: 'Unknown',
-        personality: 'Unknown',
-        difficulty: 'medium'
-      };
-    }
-    
-    // If we still don't have a call ID but have metadata with temp ID, use that
-    if (!currentCallId && fallbackMetadata?.vapiCallId) {
-      currentCallId = fallbackMetadata.vapiCallId;
-      console.log('Using call ID from metadata:', currentCallId);
-    }
-    
-    console.log('Final metadata to save:', fallbackMetadata);
-    
-    vapiService.stopInterview();
-    setCallStatus('ended');
-    
-    if (currentCallId) {
-      try {
-        const response = await api.post('/api/interview/save-vapi-call', { 
+      
+      if (!fallbackMetadata && currentCallId && !currentCallId.startsWith('temp_')) {
+        fallbackMetadata = {
           vapiCallId: currentCallId,
-          fallbackMetadata: fallbackMetadata
-        });
-        console.log('✅ Successfully saved call data:', response.data);
-        hasSavedRef.current = true;
-      } catch (error) {
-        console.error('Failed to save call data:', error);
+          jobRole: sessionDetails.jobRole,
+          personality: sessionDetails.personality,
+          difficulty: sessionDetails.difficulty
+        };
       }
-    } else {
-      console.warn('No call ID available to save');
+      
+      vapiService.stopInterview();
+      setCallStatus('ended');
+      
+      if (currentCallId) {
+        try {
+          const response = await api.post('/api/interview/save-vapi-call', { 
+            vapiCallId: currentCallId,
+            fallbackMetadata: fallbackMetadata
+          });
+          console.log('✅ Successfully saved call data:', response.data);
+          hasSavedRef.current = true;
+        } catch (error) {
+          console.error('Failed to save call data:', error);
+        }
+      }
+      
+      sessionStorage.removeItem('currentInterviewData');
+      
+      setTimeout(() => {
+        navigate('/history');
+      }, 2000);
     }
-    
-    // Clean up
-    sessionStorage.removeItem('currentInterviewData');
-    
-    setTimeout(() => {
-      navigate('/history');
-    }, 2000);
-  }
-};
+  };
   
   const handleGoBack = () => {
     if (callStatus === 'active') {
@@ -340,6 +333,7 @@ const handleEndCall = async () => {
   
   return (
     <div className="fixed inset-0 bg-[#0A0F1E] text-white flex flex-col overflow-hidden">
+      {/* Top Bar */}
       <div className="h-12 border-b flex items-center px-6" style={{ borderColor: 'hsl(222 20% 15%)' }}>
         <div className="flex items-center gap-3">
           <button
@@ -372,6 +366,7 @@ const handleEndCall = async () => {
         </div>
       </div>
       
+      {/* Main Content */}
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="max-w-4xl w-full">
           <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8 mb-6">
@@ -466,61 +461,141 @@ const handleEndCall = async () => {
         </div>
       </div>
       
+      {/* Live Transcript Sidebar */}
       <AnimatePresence>
         {showChat && callStatus === 'active' && (
           <motion.div
-            className="fixed right-0 top-12 h-[calc(100vh-48px)] w-[340px] border-l flex flex-col"
+            className="fixed right-0 top-12 h-[calc(100vh-48px)] w-[400px] border-l flex flex-col"
             style={{ backgroundColor: 'hsl(222 25% 10%)', borderColor: 'hsl(222 20% 15%)' }}
-            initial={{ x: 340 }}
+            initial={{ x: 400 }}
             animate={{ x: 0 }}
-            exit={{ x: 340 }}
+            exit={{ x: 400 }}
             transition={{ type: "spring", damping: 20 }}
           >
-            <div className="p-4 border-b flex items-center justify-between" style={{ borderColor: 'hsl(222 20% 15%)' }}>
-              <h3 className="font-medium" style={{ color: 'hsl(0 0% 100%)' }}>
-                Live Transcript
-              </h3>
-              <button
-                onClick={() => setShowChat(false)}
-                className="w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 hover:opacity-70"
-                style={{ backgroundColor: 'hsl(222 30% 6%)', color: 'hsl(222 10% 60%)' }}
-              >
-                <ChevronLeftIcon className="w-5 h-5" />
-              </button>
+            {/* Header */}
+            <div className="p-4 border-b" style={{ borderColor: 'hsl(222 20% 15%)' }}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ChatBubbleLeftRightIcon className="h-5 w-5 text-blue-400" />
+                  <h3 className="font-semibold" style={{ color: 'hsl(0 0% 100%)' }}>
+                    Live Transcript
+                  </h3>
+                  {isAiSpeaking && (
+                    <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-green-500/20 text-green-400 animate-pulse">
+                      AI Speaking
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => setShowChat(false)}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 hover:opacity-70"
+                  style={{ backgroundColor: 'hsl(222 30% 6%)', color: 'hsl(222 10% 60%)' }}
+                >
+                  <ChevronLeftIcon className="w-5 h-5" />
+                </button>
+              </div>
             </div>
             
+            {/* Transcript Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
               {transcripts.length === 0 && (
-                <div className="text-center text-gray-500 py-8">
-                  <p>Transcript will appear here...</p>
-                  <p className="text-xs mt-2">Speak naturally and the AI's responses will appear</p>
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-white/10 flex items-center justify-center">
+                    <MicrophoneIcon className="h-8 w-8 text-gray-500" />
+                  </div>
+                  <p className="text-gray-500">Transcript will appear here...</p>
+                  <p className="text-xs text-gray-600 mt-2">Speak naturally and the conversation will appear</p>
                 </div>
               )}
+              
               {transcripts.map((item, index) => (
                 <motion.div
                   key={index}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.03 }}
                   className={`flex ${item.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
-                  <div
-                    className={`max-w-[80%] p-3 rounded-lg ${
-                      item.role === 'user' 
-                        ? 'bg-blue-500/20 rounded-br-none' 
-                        : 'bg-white/10 rounded-bl-none'
-                    }`}
-                  >
-                    <p className="text-sm text-white whitespace-pre-wrap">{item.text}</p>
-                    <p className="text-xs text-gray-400 mt-1">{item.timestamp}</p>
+                  <div className={`max-w-[85%] ${item.role === 'user' ? 'order-2' : 'order-1'}`}>
+                    {/* Role badge */}
+                    <div className={`flex items-center gap-1.5 mb-1 ${item.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      {item.role === 'assistant' ? (
+                        <>
+                          <div className="w-5 h-5 rounded-full bg-purple-500/20 flex items-center justify-center">
+                            <CpuChipIcon className="h-3 w-3 text-purple-400" />
+                          </div>
+                          <span className="text-xs text-purple-400 font-medium">AI Interviewer</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-xs text-blue-400 font-medium">You</span>
+                          <div className="w-5 h-5 rounded-full bg-blue-500/20 flex items-center justify-center">
+                            <UserIcon className="h-3 w-3 text-blue-400" />
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    
+                    {/* Message bubble */}
+                    <div
+                      className={`p-3 rounded-2xl ${
+                        item.role === 'user' 
+                          ? 'bg-gradient-to-r from-blue-500/20 to-blue-600/10 rounded-tr-none'
+                          : 'bg-white/10 rounded-tl-none'
+                      } ${!item.isFinal ? 'opacity-70' : ''}`}
+                    >
+                      <p className="text-sm text-white whitespace-pre-wrap leading-relaxed">
+                        {item.text}
+                        {item.isPreview && (
+  <span className="inline-block ml-1 text-gray-400 text-xs">
+    <motion.span animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1, repeat: Infinity }}>
+      ●
+    </motion.span>
+  </span>
+)}
+                      </p>
+                    </div>
+                    
+                    {/* Timestamp */}
+                    <p className={`text-xs text-gray-500 mt-1 ${item.role === 'user' ? 'text-right' : 'text-left'}`}>
+                      {item.timestamp}
+                    </p>
                   </div>
                 </motion.div>
               ))}
+              
+              {/* AI Speaking Indicator */}
+              {isAiSpeaking && transcripts.length > 0 && transcripts[transcripts.length - 1]?.role === 'assistant' && !transcripts[transcripts.length - 1]?.isFinal && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex justify-start"
+                >
+                  <div className="max-w-[85%]">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                      <span className="text-xs text-green-400">AI is typing...</span>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+              
               <div ref={chatEndRef} />
+            </div>
+            
+            {/* Footer Stats */}
+            <div className="p-3 border-t" style={{ borderColor: 'hsl(222 20% 15%)', backgroundColor: 'hsl(222 25% 8%)' }}>
+              <div className="flex justify-between text-xs text-gray-500">
+                <span>{transcripts.filter(t => t.role === 'user').length} responses</span>
+                <span>{transcripts.filter(t => t.role === 'assistant').length} questions</span>
+                <span className="text-blue-400">Live</span>
+              </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
       
+      {/* Chat Toggle Button */}
       {!showChat && callStatus === 'active' && (
         <motion.button
           onClick={() => setShowChat(true)}
