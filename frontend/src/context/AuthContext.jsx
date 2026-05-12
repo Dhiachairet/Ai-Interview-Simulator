@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import authService from '../services/authService';
+import api from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -90,11 +91,18 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
+  // ✅ Add updateUser function
+  const updateUser = (updatedUser) => {
+    setUser(updatedUser);
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+  };
+
   const value = {
     user,
     login,
     register,
     logout,
+    updateUser,  // ← Add this
     handleGoogleCallback,
     isAuthenticated: !!user,
     loading,

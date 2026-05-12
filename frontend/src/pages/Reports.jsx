@@ -32,7 +32,16 @@ const Reports = () => {
     { name: 'New Interview', icon: <PlayIcon className="h-5 w-5" />, path: '/interview-config' },
     { name: 'History', icon: <ClockIcon className="h-5 w-5" />, path: '/history' },
     { name: 'Reports', icon: <ChartBarIcon className="h-5 w-5" />, path: '/reports', active: true },
+    { name: 'Profile', icon: <UserCircleIcon className="h-5 w-5" />, path: '/profile' }
+    
   ];
+  if (user?.role === 'admin') {
+  navigationItems.push({ 
+    name: 'Admin', 
+    icon: <Cog6ToothIcon className="h-5 w-5" />, 
+    path: '/admin' 
+  });
+}
 
   useEffect(() => {
     fetchInterviews();
