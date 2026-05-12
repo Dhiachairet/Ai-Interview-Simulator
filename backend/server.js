@@ -29,6 +29,7 @@ app.use('/api/interview', require('./routes/interviewRoutes'));
 
 // Admin routes
 app.use('/api/admin', require('./routes/adminRoutes'));
+app.use('/api/admin', require('./routes/adminVapiRoutes'));
 
 // ✅ ADD VAPI WEBHOOK ROUTE
 app.use('/webhook', require('./routes/vapiWebhook'));

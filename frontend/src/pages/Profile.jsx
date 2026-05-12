@@ -16,7 +16,11 @@ import {
   ExclamationTriangleIcon,
   EyeIcon,
   EyeSlashIcon,
-  PencilIcon
+  PencilIcon,
+  UserGroupIcon,
+  MicrophoneIcon,
+  DocumentTextIcon,
+  ShieldCheckIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -47,20 +51,30 @@ const Profile = () => {
   // Edit mode
   const [isEditing, setIsEditing] = useState(false);
   
-  const navigationItems = [
-    { name: 'Dashboard', icon: <HomeIcon className="h-5 w-5" />, path: '/' },
-    { name: 'New Interview', icon: <PlayIcon className="h-5 w-5" />, path: '/interview-config' },
-    { name: 'History', icon: <ClockIcon className="h-5 w-5" />, path: '/history' },
-    { name: 'Reports', icon: <ChartBarIcon className="h-5 w-5" />, path: '/reports' },
-    { name: 'Profile', icon: <UserCircleIcon className="h-5 w-5" />, path: '/profile', active: true },
-  ];
-  if (user?.role === 'admin') {
-  navigationItems.push({ 
-    name: 'Admin', 
-    icon: <Cog6ToothIcon className="h-5 w-5" />, 
-    path: '/admin' 
-  });
-}
+  // Get navigation items based on user role
+  const getNavigationItems = () => {
+    // Admin users see admin options
+    if (user?.role === 'admin') {
+      return [
+        { name: 'Analytics', icon: <ChartBarIcon className="h-5 w-5" />, path: '/admin' },
+        { name: 'Users', icon: <UserGroupIcon className="h-5 w-5" />, path: '/admin/users' },
+        { name: 'Interviews', icon: <DocumentTextIcon className="h-5 w-5" />, path: '/admin/interviews' },
+        { name: 'Vapi Settings', icon: <MicrophoneIcon className="h-5 w-5" />, path: '/admin/vapi-settings' },
+        { name: 'Profile', icon: <UserCircleIcon className="h-5 w-5" />, path: '/profile', active: true },
+      ];
+    }
+    
+    // Regular users see regular options
+    return [
+      { name: 'Dashboard', icon: <HomeIcon className="h-5 w-5" />, path: '/' },
+      { name: 'New Interview', icon: <PlayIcon className="h-5 w-5" />, path: '/interview-config' },
+      { name: 'History', icon: <ClockIcon className="h-5 w-5" />, path: '/history' },
+      { name: 'Reports', icon: <ChartBarIcon className="h-5 w-5" />, path: '/reports' },
+      { name: 'Profile', icon: <UserCircleIcon className="h-5 w-5" />, path: '/profile', active: true },
+    ];
+  };
+
+  const navigationItems = getNavigationItems();
 
   useEffect(() => {
     if (user) {
@@ -177,10 +191,14 @@ const Profile = () => {
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center space-x-3">
             <div className="p-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg">
-              <BriefcaseIcon className="h-6 w-6 text-white" />
+              {user?.role === 'admin' ? (
+                <ShieldCheckIcon className="h-6 w-6 text-white" />
+              ) : (
+                <BriefcaseIcon className="h-6 w-6 text-white" />
+              )}
             </div>
             <span className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-              AI Interview Pro
+              {user?.role === 'admin' ? 'Admin Portal' : 'AI Interview Pro'}
             </span>
           </div>
         </div>
@@ -378,104 +396,120 @@ const Profile = () => {
             )}
           </motion.div>
 
-          {/* Change Password Section */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6"
-          >
-            <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
-              <KeyIcon className="h-6 w-6 text-green-400" />
-              Change Password
-            </h2>
+          {/* Change Password Section - Only show for local auth users */}
+          {user?.authProvider !== 'google' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6"
+            >
+              <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
+                <KeyIcon className="h-6 w-6 text-green-400" />
+                Change Password
+              </h2>
 
-            <form onSubmit={handleUpdatePassword} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Current Password
-                </label>
-                <div className="relative">
-                  <KeyIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                  <input
-                    type={showCurrentPassword ? 'text' : 'password'}
-                    name="currentPassword"
-                    value={passwordData.currentPassword}
-                    onChange={handlePasswordChange}
-                    required
-                    className="w-full pl-12 pr-12 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition"
-                    placeholder="Enter current password"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                    className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition"
-                  >
-                    {showCurrentPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
-                  </button>
+              <form onSubmit={handleUpdatePassword} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Current Password
+                  </label>
+                  <div className="relative">
+                    <KeyIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    <input
+                      type={showCurrentPassword ? 'text' : 'password'}
+                      name="currentPassword"
+                      value={passwordData.currentPassword}
+                      onChange={handlePasswordChange}
+                      required
+                      className="w-full pl-12 pr-12 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition"
+                      placeholder="Enter current password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                      className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition"
+                    >
+                      {showCurrentPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+                    </button>
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  New Password
-                </label>
-                <div className="relative">
-                  <KeyIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                  <input
-                    type={showNewPassword ? 'text' : 'password'}
-                    name="newPassword"
-                    value={passwordData.newPassword}
-                    onChange={handlePasswordChange}
-                    required
-                    minLength={6}
-                    className="w-full pl-12 pr-12 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition"
-                    placeholder="Enter new password (min 6 characters)"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowNewPassword(!showNewPassword)}
-                    className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition"
-                  >
-                    {showNewPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
-                  </button>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    New Password
+                  </label>
+                  <div className="relative">
+                    <KeyIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      name="newPassword"
+                      value={passwordData.newPassword}
+                      onChange={handlePasswordChange}
+                      required
+                      minLength={6}
+                      className="w-full pl-12 pr-12 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition"
+                      placeholder="Enter new password (min 6 characters)"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition"
+                    >
+                      {showNewPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+                    </button>
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Confirm New Password
-                </label>
-                <div className="relative">
-                  <KeyIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                  <input
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    name="confirmPassword"
-                    value={passwordData.confirmPassword}
-                    onChange={handlePasswordChange}
-                    required
-                    className="w-full pl-12 pr-12 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition"
-                    placeholder="Confirm new password"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition"
-                  >
-                    {showConfirmPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
-                  </button>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Confirm New Password
+                  </label>
+                  <div className="relative">
+                    <KeyIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      name="confirmPassword"
+                      value={passwordData.confirmPassword}
+                      onChange={handlePasswordChange}
+                      required
+                      className="w-full pl-12 pr-12 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition"
+                      placeholder="Confirm new password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition"
+                    >
+                      {showConfirmPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+                    </button>
+                  </div>
                 </div>
-              </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl text-white font-medium hover:opacity-90 transition disabled:opacity-50"
-              >
-                {loading ? 'Updating...' : 'Update Password'}
-              </button>
-            </form>
-          </motion.div>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl text-white font-medium hover:opacity-90 transition disabled:opacity-50"
+                >
+                  {loading ? 'Updating...' : 'Update Password'}
+                </button>
+              </form>
+            </motion.div>
+          )}
+
+          {/* Message for Google OAuth users */}
+          {user?.authProvider === 'google' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="bg-blue-500/10 backdrop-blur-xl border border-blue-500/30 rounded-2xl p-6 text-center"
+            >
+              <p className="text-blue-400 text-sm">
+                You signed in with Google. Password management is handled through your Google account.
+              </p>
+            </motion.div>
+          )}
         </div>
       </main>
 

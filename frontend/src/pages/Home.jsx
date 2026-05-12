@@ -51,23 +51,34 @@ const Home = () => {
     recentImprovement: 0
   });
   const [loading, setLoading] = useState(true);
+ useEffect(() => {
+    if (user?.role === 'admin') {
+      navigate('/admin');
+    }
+  }, [user, navigate]);
+ const getNavigationItems = () => {
+  // Admin users see admin management options
+  if (user?.role === 'admin') {
+    return [
+      { name: 'Analytics', icon: <ChartBarIcon className="h-5 w-5" />, path: '/admin', active: true },
+      { name: 'Users', icon: <UserGroupIcon className="h-5 w-5" />, path: '/admin' },
+      { name: 'Interviews', icon: <ClipboardDocumentListIcon className="h-5 w-5" />, path: '/admin' },
+      { name: 'Vapi Settings', icon: <MicrophoneIcon className="h-5 w-5" />, path: '/admin/vapi-settings' },
+      { name: 'Profile', icon: <UserCircleIcon className="h-5 w-5" />, path: '/profile' },
+    ];
+  }
+  
+  // Regular users see regular options
+  return [
+    { name: 'Dashboard', icon: <HomeIcon className="h-5 w-5" />, path: '/', active: true },
+    { name: 'New Interview', icon: <PlayIcon className="h-5 w-5" />, path: '/interview-config' },
+    { name: 'History', icon: <ClockIcon className="h-5 w-5" />, path: '/history' },
+    { name: 'Reports', icon: <ChartBarIcon className="h-5 w-5" />, path: '/reports' },
+    { name: 'Profile', icon: <UserCircleIcon className="h-5 w-5" />, path: '/profile' },
+  ];
+};
 
-  const navigationItems = [
-  { name: 'Dashboard', icon: <HomeIcon className="h-5 w-5" />, path: '/', active: true },
-  { name: 'New Interview', icon: <PlayIcon className="h-5 w-5" />, path: '/interview-config' },
-  { name: 'History', icon: <ClockIcon className="h-5 w-5" />, path: '/history' },
-  { name: 'Reports', icon: <ChartBarIcon className="h-5 w-5" />, path: '/reports' },
-  { name: 'Profile', icon: <UserCircleIcon className="h-5 w-5" />, path: '/profile' },
-];
-
-
-if (user?.role === 'admin') {
-  navigationItems.push({ 
-    name: 'Admin', 
-    icon: <Cog6ToothIcon className="h-5 w-5" />, 
-    path: '/admin' 
-  });
-}
+const navigationItems = getNavigationItems();
 
   useEffect(() => {
     const handleScroll = () => {
