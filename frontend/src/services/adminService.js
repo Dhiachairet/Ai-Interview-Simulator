@@ -44,7 +44,17 @@ const adminService = {
   deleteInterview: async (id) => {
     const response = await api.delete(`/api/admin/interviews/${id}`);
     return response.data;
+  },
+   getSystemStats: async () => {
+    try {
+      const response = await api.get('/api/admin/stats');
+      return response.data;
+    } catch (error) {
+      console.error('Get system stats error:', error);
+      return { success: false, data: {} };
+    }
   }
+  
 };
 
 export default adminService;

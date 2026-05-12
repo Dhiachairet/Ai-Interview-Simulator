@@ -13,7 +13,14 @@ import {
   LockOpenIcon,
   Squares2X2Icon,
   ClipboardDocumentListIcon,
-  ArrowUturnLeftIcon
+  ArrowUturnLeftIcon,
+  ChartBarIcon,
+  TrophyIcon,
+  FireIcon,
+  DocumentTextIcon,
+  SparklesIcon,
+  ArrowTrendingUpIcon,
+  ClockIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -46,9 +53,22 @@ const AdminDashboard = () => {
   const [interviewQuery, setInterviewQuery] = useState('');
   const [interviewStatus, setInterviewStatus] = useState('all');
 
+  // Enhanced stats
+  const [systemStats, setSystemStats] = useState({
+    totalInterviews: 0,
+    avgOverallScore: 0,
+    totalDuration: 0,
+    activeUsers30d: 0,
+    interviewsByPersonality: {},
+    interviewsByRole: {},
+    recentActivity: []
+  });
+  const [statsLoading, setStatsLoading] = useState(true);
+
   const navigationItems = [
     { id: 'users', name: 'Users', icon: <UserGroupIcon className="h-5 w-5" /> },
-    { id: 'interviews', name: 'Interviews', icon: <ClipboardDocumentListIcon className="h-5 w-5" /> }
+    { id: 'interviews', name: 'Interviews', icon: <ClipboardDocumentListIcon className="h-5 w-5" /> },
+    { id: 'analytics', name: 'Analytics', icon: <ChartBarIcon className="h-5 w-5" /> }
   ];
 
   useEffect(() => {
@@ -58,6 +78,7 @@ const AdminDashboard = () => {
     }
 
     fetchUsers();
+    fetchSystemStats();
   }, [user]);
 
   useEffect(() => {
@@ -114,13 +135,29 @@ const AdminDashboard = () => {
     }
   };
 
-  const stats = useMemo(() => {
+  const fetchSystemStats = async () => {
+    try {
+      setStatsLoading(true);
+      const response = await adminService.getSystemStats();
+      if (response.success) {
+        setSystemStats(response.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch system stats:', err);
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  const userStats = useMemo(() => {
     const total = users.length;
     const admins = users.filter((item) => item.role === 'admin').length;
     const googleUsers = users.filter((item) => item.authProvider === 'google').length;
     const localUsers = total - googleUsers;
+    const suspendedUsers = users.filter((item) => item.status === 'suspended').length;
+    const activeUsers = total - suspendedUsers;
 
-    return { total, admins, googleUsers, localUsers };
+    return { total, admins, googleUsers, localUsers, suspendedUsers, activeUsers };
   }, [users]);
 
   const handleLogout = () => {
@@ -328,12 +365,14 @@ const AdminDashboard = () => {
             <div>
               <p className="text-sm uppercase tracking-[0.3em] text-blue-300/70">Admin Control</p>
               <h1 className="text-3xl md:text-4xl font-semibold mt-2">
-                {activeView === 'users' ? 'User Management' : 'Interview Oversight'}
+                {activeView === 'users' && 'User Management'}
+                {activeView === 'interviews' && 'Interview Oversight'}
+                {activeView === 'analytics' && 'Platform Analytics'}
               </h1>
               <p className="text-gray-400 mt-2">
-                {activeView === 'users'
-                  ? 'Create, update, and manage access for your users.'
-                  : 'Review and clean up interviews across the platform.'}
+                {activeView === 'users' && 'Create, update, and manage access for your users.'}
+                {activeView === 'interviews' && 'Review and clean up interviews across the platform.'}
+                {activeView === 'analytics' && 'View system-wide performance and usage statistics.'}
               </p>
             </div>
             {activeView === 'users' && (
@@ -349,21 +388,23 @@ const AdminDashboard = () => {
             )}
           </div>
 
+          {/* Enhanced Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mt-10">
             <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-400">Total Users</p>
-                  <p className="text-3xl font-semibold mt-2">{stats.total}</p>
+                  <p className="text-3xl font-semibold mt-2">{userStats.total}</p>
                 </div>
                 <UsersIcon className="h-8 w-8 text-blue-400" />
               </div>
+              <p className="text-xs text-gray-500 mt-2">{userStats.activeUsers} active</p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-400">Admins</p>
-                  <p className="text-3xl font-semibold mt-2">{stats.admins}</p>
+                  <p className="text-3xl font-semibold mt-2">{userStats.admins}</p>
                 </div>
                 <ShieldCheckIcon className="h-8 w-8 text-purple-400" />
               </div>
@@ -371,19 +412,19 @@ const AdminDashboard = () => {
             <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-400">Google Auth</p>
-                  <p className="text-3xl font-semibold mt-2">{stats.googleUsers}</p>
+                  <p className="text-sm text-gray-400">Total Interviews</p>
+                  <p className="text-3xl font-semibold mt-2">{systemStats.totalInterviews}</p>
                 </div>
-                <UserGroupIcon className="h-8 w-8 text-pink-400" />
+                <DocumentTextIcon className="h-8 w-8 text-green-400" />
               </div>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-400">Local Auth</p>
-                  <p className="text-3xl font-semibold mt-2">{stats.localUsers}</p>
+                  <p className="text-sm text-gray-400">Avg Score</p>
+                  <p className="text-3xl font-semibold mt-2">{systemStats.avgOverallScore}%</p>
                 </div>
-                <UserGroupIcon className="h-8 w-8 text-emerald-400" />
+                <TrophyIcon className="h-8 w-8 text-yellow-400" />
               </div>
             </div>
           </div>
@@ -429,7 +470,7 @@ const AdminDashboard = () => {
                     <th className="pb-3 font-medium">Auth</th>
                     <th className="pb-3 font-medium">Created</th>
                     <th className="pb-3 font-medium text-right">Actions</th>
-                  </tr>
+                   </tr>
                 </thead>
                 <tbody>
                   {users.map((item) => (
@@ -444,7 +485,7 @@ const AdminDashboard = () => {
                             <p className="text-gray-400 text-xs">{item.email}</p>
                           </div>
                         </div>
-                      </td>
+                       </td>
                       <td className="py-4">
                         <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                           item.role === 'admin'
@@ -453,7 +494,7 @@ const AdminDashboard = () => {
                         }`}>
                           {item.role}
                         </span>
-                      </td>
+                       </td>
                       <td className="py-4">
                         <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                           item.status === 'suspended'
@@ -462,11 +503,11 @@ const AdminDashboard = () => {
                         }`}>
                           {item.status || 'active'}
                         </span>
-                      </td>
+                       </td>
                       <td className="py-4 text-gray-300 capitalize">{item.authProvider || 'local'}</td>
                       <td className="py-4 text-gray-300">
                         {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : 'Unknown'}
-                      </td>
+                       </td>
                       <td className="py-4 text-right">
                         <div className="inline-flex items-center gap-2">
                           <button
@@ -494,7 +535,7 @@ const AdminDashboard = () => {
                             <TrashIcon className="h-4 w-4" />
                           </button>
                         </div>
-                      </td>
+                       </td>
                     </tr>
                   ))}
                 </tbody>
@@ -505,7 +546,7 @@ const AdminDashboard = () => {
               )}
             </div>
           </div>
-          ) : (
+          ) : activeView === 'interviews' ? (
             <div className="mt-10 rounded-2xl border border-white/10 bg-white/5 p-6">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div className="relative w-full md:max-w-sm">
@@ -526,6 +567,7 @@ const AdminDashboard = () => {
                     <option value="all">All Status</option>
                     <option value="completed">Completed</option>
                     <option value="in-progress">In Progress</option>
+                    <option value="evaluating">Evaluating</option>
                   </select>
                 </div>
               </div>
@@ -540,10 +582,11 @@ const AdminDashboard = () => {
                         <th className="pb-3 font-medium">User</th>
                         <th className="pb-3 font-medium">Role</th>
                         <th className="pb-3 font-medium">Personality</th>
+                        <th className="pb-3 font-medium">Score</th>
                         <th className="pb-3 font-medium">Status</th>
                         <th className="pb-3 font-medium">Created</th>
                         <th className="pb-3 font-medium text-right">Actions</th>
-                      </tr>
+                       </tr>
                     </thead>
                     <tbody>
                       {interviews.map((item) => (
@@ -551,21 +594,31 @@ const AdminDashboard = () => {
                           <td className="py-4">
                             <p className="text-white font-medium">{item.user?.name || 'Unknown'}</p>
                             <p className="text-gray-400 text-xs">{item.user?.email || 'No email'}</p>
-                          </td>
+                           </td>
                           <td className="py-4 text-gray-300 capitalize">{item.jobRole}</td>
                           <td className="py-4 text-gray-300 capitalize">{item.personality}</td>
+                          <td className="py-4">
+                            <span className={`font-semibold ${
+                              (item.overallScore || 0) >= 80 ? 'text-green-400' :
+                              (item.overallScore || 0) >= 60 ? 'text-yellow-400' : 'text-red-400'
+                            }`}>
+                              {item.overallScore || 0}%
+                            </span>
+                           </td>
                           <td className="py-4">
                             <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                               item.status === 'completed'
                                 ? 'bg-emerald-500/20 text-emerald-200'
+                                : item.status === 'evaluating'
+                                ? 'bg-purple-500/20 text-purple-200'
                                 : 'bg-yellow-500/20 text-yellow-200'
                             }`}>
                               {item.status}
                             </span>
-                          </td>
+                           </td>
                           <td className="py-4 text-gray-300">
                             {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : 'Unknown'}
-                          </td>
+                           </td>
                           <td className="py-4 text-right">
                             <button
                               onClick={() => handleDeleteInterview(item._id)}
@@ -575,7 +628,7 @@ const AdminDashboard = () => {
                             >
                               <TrashIcon className="h-4 w-4" />
                             </button>
-                          </td>
+                           </td>
                         </tr>
                       ))}
                     </tbody>
@@ -586,6 +639,72 @@ const AdminDashboard = () => {
                   )}
                 </div>
               )}
+            </div>
+          ) : (
+            // Analytics View
+            <div className="mt-10 space-y-6">
+              {/* Performance Metrics */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <SparklesIcon className="h-5 w-5 text-blue-400" />
+                    <h2 className="text-lg font-semibold">Interview Performance</h2>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span>Average Score</span>
+                        <span>{systemStats.avgOverallScore}%</span>
+                      </div>
+                      <div className="w-full bg-white/10 rounded-full h-2">
+                        <div className="bg-green-500 h-2 rounded-full" style={{ width: `${systemStats.avgOverallScore}%` }} />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span>Completion Rate</span>
+                        <span>{systemStats.totalInterviews > 0 ? Math.round((systemStats.totalInterviews / (systemStats.totalInterviews + 5)) * 100) : 0}%</span>
+                      </div>
+                      <div className="w-full bg-white/10 rounded-full h-2">
+                        <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${systemStats.totalInterviews > 0 ? Math.round((systemStats.totalInterviews / (systemStats.totalInterviews + 5)) * 100) : 0}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <FireIcon className="h-5 w-5 text-orange-400" />
+                    <h2 className="text-lg font-semibold">User Engagement</h2>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-sm"><span className="text-gray-400">Active Users (30 days):</span> <span className="font-semibold">{systemStats.activeUsers30d}</span></p>
+                    <p className="text-sm"><span className="text-gray-400">Avg Interviews per User:</span> <span className="font-semibold">{userStats.total > 0 ? (systemStats.totalInterviews / userStats.total).toFixed(1) : 0}</span></p>
+                    <p className="text-sm"><span className="text-gray-400">Total Duration:</span> <span className="font-semibold">{Math.floor(systemStats.totalDuration / 60)} min {systemStats.totalDuration % 60} sec</span></p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Recent Activity Feed */}
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <ClockIcon className="h-5 w-5 text-purple-400" />
+                  <h2 className="text-lg font-semibold">Recent Activity</h2>
+                </div>
+                <div className="space-y-3">
+                  {systemStats.recentActivity && systemStats.recentActivity.length > 0 ? (
+                    systemStats.recentActivity.slice(0, 10).map((activity, idx) => (
+                      <div key={idx} className="flex items-center gap-3 text-sm py-2 border-b border-white/5">
+                        <div className="w-2 h-2 rounded-full bg-green-400"></div>
+                        <span className="text-gray-300">{activity.message}</span>
+                        <span className="text-gray-500 text-xs ml-auto">{activity.time}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center text-gray-400 py-4">No recent activity</div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </div>

@@ -292,6 +292,81 @@ const deleteInterview = async (req, res) => {
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
+};  
+// @desc    Get system statistics for admin dashboard
+// @route   GET /api/admin/stats
+// @access  Private/Admin
+const getSystemStats = async (req, res) => {
+  try {
+    const totalUsers = await User.countDocuments();
+    const totalInterviews = await Interview.countDocuments();
+    const completedInterviews = await Interview.countDocuments({ status: 'completed' });
+    
+    // Calculate average score from completed interviews
+    const completed = await Interview.find({ status: 'completed', overallScore: { $exists: true } });
+    const avgScore = completed.length > 0
+      ? Math.round(completed.reduce((acc, i) => acc + (i.overallScore || 0), 0) / completed.length)
+      : 0;
+    
+    // Active users in last 30 days
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const activeUsers30d = await Interview.aggregate([
+      { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+      { $group: { _id: '$user' } },
+      { $count: 'count' }
+    ]);
+    
+    // Total duration
+    const durationResult = await Interview.aggregate([
+      { $group: { _id: null, total: { $sum: '$duration' } } }
+    ]);
+    const totalDuration = durationResult[0]?.total || 0;
+    
+    // Interviews by personality
+    const personalities = ['Strict Technical', 'Friendly HR', 'Stress Tester', 'Theoretical Expert'];
+    const interviewsByPersonality = {};
+    for (const p of personalities) {
+      interviewsByPersonality[p] = await Interview.countDocuments({ personality: p });
+    }
+    
+    // Interviews by job role
+    const roles = ['Frontend Developer', 'Backend Developer', 'HR Manager', 'Product Manager', 'Data Scientist'];
+    const interviewsByRole = {};
+    for (const r of roles) {
+      interviewsByRole[r] = await Interview.countDocuments({ jobRole: r });
+    }
+    
+    // Recent activity (last 10 completed interviews)
+    const recentActivityData = await Interview.find({ status: 'completed' })
+      .populate('user', 'name')
+      .sort('-completedAt')
+      .limit(10)
+      .select('user jobRole overallScore completedAt');
+    
+    const recentActivity = recentActivityData.map(interview => ({
+      message: `${interview.user?.name || 'User'} completed ${interview.jobRole} interview with score ${interview.overallScore || 0}%`,
+      time: interview.completedAt ? new Date(interview.completedAt).toLocaleString() : new Date(interview.createdAt).toLocaleString()
+    }));
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        totalUsers,
+        totalInterviews,
+        completedInterviews,
+        avgOverallScore: avgScore,
+        activeUsers30d: activeUsers30d[0]?.count || 0,
+        totalDuration,
+        interviewsByPersonality,
+        interviewsByRole,
+        recentActivity
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching system stats:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
 };
 
 module.exports = {
@@ -303,5 +378,6 @@ module.exports = {
   suspendUser,
   activateUser,
   listInterviews,
-  deleteInterview
+  deleteInterview,
+  getSystemStats
 };

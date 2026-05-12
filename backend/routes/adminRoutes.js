@@ -9,7 +9,8 @@ const {
   suspendUser,
   activateUser,
   listInterviews,
-  deleteInterview
+  deleteInterview,
+  getSystemStats
 } = require('../controllers/adminController');
 const { protect, adminOnly } = require('../middleware/auth');
 
@@ -25,5 +26,7 @@ router.put('/users/:id/activate', activateUser);
 
 router.get('/interviews', listInterviews);
 router.delete('/interviews/:id', deleteInterview);
+router.get('/stats', getSystemStats);
+
 
 module.exports = router;
