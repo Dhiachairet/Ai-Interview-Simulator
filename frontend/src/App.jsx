@@ -18,6 +18,7 @@ import AdminAnalytics from './pages/admin/AdminAnalytics';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminInterviews from './pages/admin/AdminInterviews';
 import AdminVapiSettings from './pages/admin/AdminVapiSettings';
+import AdminJobRoles from './pages/admin/AdminJobRoles';
 
 const AdminRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -96,6 +97,14 @@ function App() {
               </AdminRoute>
             }
           />
+          <Route
+          path="/admin/job-roles"
+          element={
+            <AdminRoute>
+              <AdminJobRoles />
+            </AdminRoute>
+          }
+        />
         </Routes>
       </Router>
     </AuthProvider>

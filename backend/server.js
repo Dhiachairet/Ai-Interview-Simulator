@@ -24,15 +24,18 @@ app.get('/', (req, res) => {
 
 // Mount auth routes
 app.use('/api/auth', require('./routes/authRoutes'));
-
 app.use('/api/interview', require('./routes/interviewRoutes'));
 
 // Admin routes
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/admin', require('./routes/adminVapiRoutes'));
 
-// ✅ ADD VAPI WEBHOOK ROUTE
+// VAPI WEBHOOK ROUTE
 app.use('/webhook', require('./routes/vapiWebhook'));
+
+// ✅ JOB ROUTES - Only register once
+// Public routes for users
+app.use('/api/admin/job-roles', require('./routes/jobRoleRoutes'));
 
 // Start server
 const PORT = process.env.PORT || 5000;
