@@ -297,106 +297,177 @@ await api.post('/api/admin/job-roles', formData);  // Same, no change
       </main>
 
       {/* Modal - Create/Edit */}
-      <AnimatePresence>
-        {showModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
-            onClick={() => setShowModal(false)}
+      {/* Modal - Create/Edit */}
+<AnimatePresence>
+  {showModal && (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+      onClick={() => setShowModal(false)}
+    >
+      <motion.div
+        initial={{ y: 50, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: 50, opacity: 0 }}
+        className="relative bg-[#0F1428] border border-white/20 rounded-2xl max-w-2xl w-full"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex justify-between items-center p-6 border-b border-white/10">
+          <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+            {editingRole ? 'Edit Job Role' : 'Create New Job Role'}
+          </h2>
+          <button 
+            onClick={() => setShowModal(false)} 
+            className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition text-white"
           >
-            <motion.div
-              initial={{ y: 50, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 50, opacity: 0 }}
-              className="relative bg-[#0F1428] border border-white/20 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="sticky top-0 bg-[#0F1428] border-b border-white/10 p-6 flex justify-between items-center">
-                <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                  {editingRole ? 'Edit Job Role' : 'Add Job Role'}
-                </h2>
-                <button onClick={() => setShowModal(false)} className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition">
-                  <XMarkIcon className="h-5 w-5" />
-                </button>
+            <XMarkIcon className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Form */}
+        <div className="p-6 space-y-5">
+          {/* Name & Description */}
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">
+                Role Name <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                placeholder="e.g., DevOps Engineer"
+                autoFocus
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">
+                Description <span className="text-red-400">*</span>
+              </label>
+              <textarea
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                rows={2}
+                className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 resize-none"
+                placeholder="Brief description of the role"
+              />
+            </div>
+          </div>
+
+          {/* Icon Selection - Simple Dropdown */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1.5">
+              Icon
+            </label>
+            <div className="flex items-center gap-4">
+              {/* Icon Preview */}
+              <div className={`p-3 rounded-xl bg-gradient-to-r ${formData.gradient} shadow-lg`}>
+                {getIconComponent(formData.iconName, "h-8 w-8 text-white")}
               </div>
+              
+              {/* Dropdown */}
+              <select
+                value={formData.iconName}
+                onChange={(e) => setFormData({ ...formData, iconName: e.target.value })}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 cursor-pointer"
+              >
+                {AVAILABLE_ICONS.map((icon) => (
+                  <option key={icon.name} value={icon.name} className="bg-[#0F1428]">
+                    {icon.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Role Name</label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                    placeholder="e.g., DevOps Engineer"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Description</label>
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    rows={2}
-                    className="w-full px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                    placeholder="Brief description of the role"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Icon</label>
-                  <select
-                    value={formData.iconName}
-                    onChange={(e) => setFormData({ ...formData, iconName: e.target.value })}
-                    className="w-full px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                  >
-                    {AVAILABLE_ICONS.map(icon => (
-                      <option key={icon.name} value={icon.name}>{icon.label}</option>
-                    ))}
-                  </select>
-                  <div className="mt-2 flex items-center gap-2">
-                    <span className="text-xs text-gray-500">Preview:</span>
-                    <div className="p-2 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500">
-                      {getIconComponent(formData.iconName, "h-5 w-5 text-white")}
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Gradient Color</label>
-                  <select
-                    value={formData.gradient}
-                    onChange={(e) => setFormData({ ...formData, gradient: e.target.value })}
-                    className="w-full px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                  >
-                    <option value="from-blue-500 to-cyan-500">Blue to Cyan</option>
-                    <option value="from-purple-500 to-pink-500">Purple to Pink</option>
-                    <option value="from-green-500 to-emerald-500">Green to Emerald</option>
-                    <option value="from-orange-500 to-amber-500">Orange to Amber</option>
-                    <option value="from-red-500 to-rose-500">Red to Rose</option>
-                    <option value="from-indigo-500 to-purple-500">Indigo to Purple</option>
-                    <option value="from-pink-500 to-rose-500">Pink to Rose</option>
-                    <option value="from-teal-500 to-cyan-500">Teal to Cyan</option>
-                  </select>
-                </div>
-
-                
-              </div>
-
-              <div className="sticky bottom-0 bg-[#0F1428] border-t border-white/10 p-6 flex justify-end gap-3">
-                <button onClick={() => setShowModal(false)} className="px-4 py-2 bg-white/10 rounded-lg text-white hover:bg-white/20 transition">
-                  Cancel
+          {/* Gradient Selection - Color Swatches */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1.5">
+              Color Theme
+            </label>
+            <div className="grid grid-cols-5 gap-2">
+              {[
+                { value: 'from-blue-500 to-cyan-500', label: 'Blue', colors: 'bg-gradient-to-r from-blue-500 to-cyan-500' },
+                { value: 'from-purple-500 to-pink-500', label: 'Purple', colors: 'bg-gradient-to-r from-purple-500 to-pink-500' },
+                { value: 'from-green-500 to-emerald-500', label: 'Green', colors: 'bg-gradient-to-r from-green-500 to-emerald-500' },
+                { value: 'from-orange-500 to-amber-500', label: 'Orange', colors: 'bg-gradient-to-r from-orange-500 to-amber-500' },
+                { value: 'from-red-500 to-rose-500', label: 'Red', colors: 'bg-gradient-to-r from-red-500 to-rose-500' },
+                { value: 'from-indigo-500 to-purple-500', label: 'Indigo', colors: 'bg-gradient-to-r from-indigo-500 to-purple-500' },
+                { value: 'from-pink-500 to-rose-500', label: 'Pink', colors: 'bg-gradient-to-r from-pink-500 to-rose-500' },
+                { value: 'from-teal-500 to-cyan-500', label: 'Teal', colors: 'bg-gradient-to-r from-teal-500 to-cyan-500' },
+                { value: 'from-yellow-500 to-orange-500', label: 'Yellow', colors: 'bg-gradient-to-r from-yellow-500 to-orange-500' },
+                { value: 'from-sky-500 to-blue-500', label: 'Sky', colors: 'bg-gradient-to-r from-sky-500 to-blue-500' }
+              ].map((gradient) => (
+                <button
+                  key={gradient.value}
+                  type="button"
+                  onClick={() => setFormData({ ...formData, gradient: gradient.value })}
+                  className={`group relative p-1 rounded-lg transition-all duration-200 ${
+                    formData.gradient === gradient.value
+                      ? 'ring-2 ring-white scale-105'
+                      : 'hover:scale-105'
+                  }`}
+                >
+                  <div className={`h-10 w-full rounded-lg ${gradient.colors} shadow-md`} />
+                  <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                    {gradient.label}
+                  </span>
                 </button>
-                <button onClick={handleSave} disabled={saving} className="px-6 py-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg text-white font-medium disabled:opacity-50">
-                  {saving ? 'Saving...' : (editingRole ? 'Update' : 'Create')}
-                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Live Preview Card */}
+          <div className="mt-6 p-4 bg-white/5 rounded-xl border border-white/10">
+            <p className="text-xs text-gray-400 mb-3 uppercase tracking-wider">Live Preview</p>
+            <div className="flex items-center gap-4">
+              <div className={`p-3 rounded-xl bg-gradient-to-r ${formData.gradient} shadow-lg`}>
+                {getIconComponent(formData.iconName, "h-8 w-8 text-white")}
               </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              <div>
+                <h3 className="text-lg font-semibold text-white">
+                  {formData.name || "Role Name"}
+                </h3>
+                <p className="text-sm text-gray-400">
+                  {formData.description || "Description will appear here"}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer Buttons */}
+        <div className="flex justify-end gap-3 p-6 border-t border-white/10 bg-[#0F1428]">
+          <button
+            onClick={() => setShowModal(false)}
+            className="px-5 py-2.5 bg-white/10 rounded-xl text-white font-medium hover:bg-white/20 transition"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || !formData.name.trim() || !formData.description.trim()}
+            className="px-6 py-2.5 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl text-white font-medium hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-500/25"
+          >
+            {saving ? (
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Creating...
+              </div>
+            ) : (
+              editingRole ? 'Update Role' : 'Create Role'
+            )}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  )}
+</AnimatePresence>
 
       <style>{`
         @keyframes blob {

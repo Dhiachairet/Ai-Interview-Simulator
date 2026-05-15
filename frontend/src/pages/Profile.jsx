@@ -59,6 +59,7 @@ const Profile = () => {
         { name: 'Analytics', icon: <ChartBarIcon className="h-5 w-5" />, path: '/admin' },
         { name: 'Users', icon: <UserGroupIcon className="h-5 w-5" />, path: '/admin/users' },
         { name: 'Interviews', icon: <DocumentTextIcon className="h-5 w-5" />, path: '/admin/interviews' },
+        { name: 'Job Roles', icon: <BriefcaseIcon className="h-5 w-5" />, path: '/admin/job-roles' },
         { name: 'Vapi Settings', icon: <MicrophoneIcon className="h-5 w-5" />, path: '/admin/vapi-settings' },
         { name: 'Profile', icon: <UserCircleIcon className="h-5 w-5" />, path: '/profile', active: true },
       ];

@@ -23,6 +23,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import vapiService from '../services/vapiService';
+import { iconComponents } from '../constants/iconMap';
 
 // Map UI IDs to personality names (must match ASSISTANT_IDS keys in vapiService)
 const PERSONALITY_MAP = {
@@ -32,25 +33,58 @@ const PERSONALITY_MAP = {
   'theoretical-expert': 'Theoretical Expert'
 };
 
-// Map job role IDs to display names for Vapi
-const JOB_ROLE_MAP = {
-  'hr-manager': 'HR Manager',
-  'frontend': 'Frontend Developer',
-  'backend': 'Backend Developer',
-  'product-manager': 'Product Manager',
-  'data-scientist': 'Data Scientist'
-};
-
 const InterviewConfig = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [selectedRole, setSelectedRole] = useState(null);
   const [selectedStyle, setSelectedStyle] = useState(null);
   const [selectedDifficulty, setSelectedDifficulty] = useState('medium');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isStartingInterview, setIsStartingInterview] = useState(false);
-  const [vapiStatus, setVapiStatus] = useState('idle'); // idle, initializing, ready, error
+  const [vapiStatus, setVapiStatus] = useState('idle');
   const [vapiError, setVapiError] = useState(null);
+  
+  // Dynamic job roles from database
+  const [jobRoles, setJobRoles] = useState([]);
+  const [loadingRoles, setLoadingRoles] = useState(true);
+
+  // Fetch job roles from database
+  useEffect(() => {
+    fetchJobRoles();
+  }, []);
+
+  const fetchJobRoles = async () => {
+    try {
+      setLoadingRoles(true);
+      const response = await api.get('/api/job-roles');
+      if (response.data.success && response.data.data.length > 0) {
+        setJobRoles(response.data.data);
+      } else {
+        // Fallback to static roles if no roles in DB
+        setJobRoles(fallbackJobRoles);
+      }
+    } catch (error) {
+      console.error('Failed to fetch job roles:', error);
+      // Fallback to static roles
+      setJobRoles(fallbackJobRoles);
+    } finally {
+      setLoadingRoles(false);
+    }
+  };
+
+  // Fallback static roles (in case DB is empty)
+  const fallbackJobRoles = [
+    { _id: 'hr-manager', name: 'HR Manager', description: 'People management, culture', iconName: 'UserGroupIcon', gradient: 'from-pink-500 to-rose-500' },
+    { _id: 'frontend', name: 'Frontend Developer', description: 'React, CSS, JavaScript', iconName: 'CodeBracketIcon', gradient: 'from-blue-500 to-cyan-500' },
+    { _id: 'backend', name: 'Backend Developer', description: 'Node.js, APIs, Databases', iconName: 'ServerIcon', gradient: 'from-green-500 to-emerald-500' },
+    { _id: 'product-manager', name: 'Product Manager', description: 'Strategy, roadmaps, metrics', iconName: 'CubeIcon', gradient: 'from-purple-500 to-violet-500' },
+    { _id: 'data-scientist', name: 'Data Scientist', description: 'ML, analytics, Python', iconName: 'ChartPieIcon', gradient: 'from-orange-500 to-amber-500' }
+  ];
+
+  // Helper function to get icon component
+  const getIconComponent = (iconName, className = "h-8 w-8") => {
+    const Icon = iconComponents[iconName];
+    return Icon ? <Icon className={className} /> : <BriefcaseIcon className={className} />;
+  };
 
   // Initialize Vapi on component mount
   useEffect(() => {
@@ -66,7 +100,6 @@ const InterviewConfig = () => {
       
       setVapiStatus('initializing');
       
-      // Small delay to ensure Vapi service is ready
       setTimeout(() => {
         const initialized = vapiService.initialize(publicKey);
         
@@ -82,51 +115,12 @@ const InterviewConfig = () => {
     
     initVapi();
     
-    // Cleanup on unmount
     return () => {
       if (vapiService.isActive()) {
         vapiService.stopInterview();
       }
     };
   }, []);
-
-  const jobRoles = [
-    {
-      id: 'hr-manager',
-      title: 'HR Manager',
-      description: 'People management, culture',
-      icon: <UserCircleIcon className="h-8 w-8" />,
-      gradient: 'from-pink-500 to-rose-500'
-    },
-    {
-      id: 'frontend',
-      title: 'Frontend Developer',
-      description: 'React, CSS, JavaScript',
-      icon: <CodeBracketIcon className="h-8 w-8" />,
-      gradient: 'from-blue-500 to-cyan-500'
-    },
-    {
-      id: 'backend',
-      title: 'Backend Developer',
-      description: 'Node.js, APIs, Databases',
-      icon: <ServerIcon className="h-8 w-8" />,
-      gradient: 'from-green-500 to-emerald-500'
-    },
-    {
-      id: 'product-manager',
-      title: 'Product Manager',
-      description: 'Strategy, roadmaps, metrics',
-      icon: <CubeIcon className="h-8 w-8" />,
-      gradient: 'from-purple-500 to-violet-500'
-    },
-    {
-      id: 'data-scientist',
-      title: 'Data Scientist',
-      description: 'ML, analytics, Python',
-      icon: <ChartPieIcon className="h-8 w-8" />,
-      gradient: 'from-orange-500 to-amber-500'
-    }
-  ];
 
   const interviewerStyles = [
     {
@@ -168,15 +162,16 @@ const InterviewConfig = () => {
     { name: 'New Interview', icon: <PlayIcon className="h-5 w-5" />, path: '/interview-config', active: true },
     { name: 'History', icon: <ClockIcon className="h-5 w-5" />, path: '/history' },
     { name: 'Reports', icon: <ChartBarIcon className="h-5 w-5" />, path: '/reports' },
-     { name: 'Profile', icon: <UserCircleIcon className="h-5 w-5" />, path: '/profile' }
+    { name: 'Profile', icon: <UserCircleIcon className="h-5 w-5" />, path: '/profile' }
   ];
+  
   if (user?.role === 'admin') {
-  navigationItems.push({ 
-    name: 'Admin', 
-    icon: <Cog6ToothIcon className="h-5 w-5" />, 
-    path: '/admin' 
-  });
-}
+    navigationItems.push({ 
+      name: 'Admin', 
+      icon: <Cog6ToothIcon className="h-5 w-5" />, 
+      path: '/admin' 
+    });
+  }
 
   const handleLogout = () => {
     logout();
@@ -186,101 +181,114 @@ const InterviewConfig = () => {
   const getSessionSummary = () => {
     if (!selectedRole || !selectedStyle || !selectedDifficulty) return null;
 
-    const role = jobRoles.find(r => r.id === selectedRole);
+    const role = jobRoles.find(r => r._id === selectedRole || r.name === selectedRole);
     const style = interviewerStyles.find(s => s.id === selectedStyle);
     
     return {
-      role: role?.title,
+      role: role?.name || selectedRole,
       style: style?.name,
       difficulty: selectedDifficulty.charAt(0).toUpperCase() + selectedDifficulty.slice(1),
-      description: `You'll face a ${selectedDifficulty}-level interview for a ${role?.title} position with a ${style?.name.toLowerCase()} interviewer. The AI will ask you 5 questions and provide feedback.`
+      description: `You'll face a ${selectedDifficulty}-level interview for a ${role?.name || selectedRole} position with a ${style?.name.toLowerCase()} interviewer. The AI will ask you questions and provide feedback.`
     };
   };
 
   const sessionSummary = getSessionSummary();
 
   const handleBeginInterview = async () => {
-  if (!selectedRole || !selectedStyle) {
-    console.warn('Please select both a job role and interviewer style');
-    return;
-  }
-  
-  if (vapiStatus !== 'ready') {
-    console.error('Vapi is not ready. Status:', vapiStatus);
-    setVapiError('Interview service is initializing. Please wait a moment and try again.');
-    setTimeout(() => setVapiError(null), 3000);
-    return;
-  }
-  
-  setIsStartingInterview(true);
-  
-  try {
-    const personalityName = PERSONALITY_MAP[selectedStyle];
-    const roleName = JOB_ROLE_MAP[selectedRole];
-    
-    if (!personalityName) throw new Error(`Invalid personality: ${selectedStyle}`);
-    if (!roleName) throw new Error(`Invalid job role: ${selectedRole}`);
-    
-    console.log('Starting interview with:', {
-      personality: personalityName,
-      jobRole: roleName,
-      difficulty: selectedDifficulty
-    });
-    
-    // ✅ Set up call-end handler to save the Vapi call
-    vapiService.onCallEnd = async (vapiCallId) => {
-      console.log('Vapi call ended, saving call ID:', vapiCallId);
-      
-      if (vapiCallId) {
-        try {
-          const response = await api.post('/api/interview/save-vapi-call', { vapiCallId });
-          console.log('✅ Successfully saved Vapi call data:', response.data);
-        } catch (error) {
-          console.error('Failed to save Vapi call:', error);
-        }
-      } else {
-        console.warn('No vapiCallId received, cannot save');
-      }
-      
-      setIsStartingInterview(false);
-    };
-    
-    vapiService.onCallStart = () => {
-      console.log('Vapi call started');
-    };
-    
-    vapiService.onError = (error) => {
-      console.error('Vapi error during interview:', error);
-      setIsStartingInterview(false);
-    };
-    
-    const result = await vapiService.startInterview(
-      personalityName,
-      roleName,
-      selectedDifficulty
-    );
-    
-    if (result.success) {
-      console.log('Interview started successfully:', result);
-      navigate('/vapi-call', {
-        state: {
-          personality: personalityName,
-          jobRole: roleName,
-          difficulty: selectedDifficulty,
-          callId: result.callId
-        }
-      });
-    } else {
-      throw new Error('Failed to start interview');
+    if (!selectedRole || !selectedStyle) {
+      console.warn('Please select both a job role and interviewer style');
+      return;
     }
     
-  } catch (error) {
-    console.error('Failed to start interview:', error);
-    setVapiError(error.message || 'Failed to start interview. Please try again.');
-    setTimeout(() => setVapiError(null), 5000);
-    setIsStartingInterview(false);
-  }
-};
+    if (vapiStatus !== 'ready') {
+      console.error('Vapi is not ready. Status:', vapiStatus);
+      setVapiError('Interview service is initializing. Please wait a moment and try again.');
+      setTimeout(() => setVapiError(null), 3000);
+      return;
+    }
+    
+    setIsStartingInterview(true);
+    
+    try {
+      const personalityName = PERSONALITY_MAP[selectedStyle];
+      
+      // Get the role name (either from DB or fallback)
+      let roleName = selectedRole;
+      const selectedRoleObj = jobRoles.find(r => r._id === selectedRole || r.name === selectedRole);
+      if (selectedRoleObj) {
+        roleName = selectedRoleObj.name;
+      }
+      
+      if (!personalityName) throw new Error(`Invalid personality: ${selectedStyle}`);
+      if (!roleName) throw new Error(`Invalid job role: ${selectedRole}`);
+      
+      console.log('Starting interview with:', {
+        personality: personalityName,
+        jobRole: roleName,  // ← This will be passed as {{jobRole}} to Vapi
+        difficulty: selectedDifficulty
+      });
+      
+      // Set up call-end handler to save the Vapi call
+      vapiService.onCallEnd = async (vapiCallId) => {
+        console.log('Vapi call ended, saving call ID:', vapiCallId);
+        
+        if (vapiCallId) {
+          try {
+            const response = await api.post('/api/interview/save-vapi-call', { 
+              vapiCallId,
+              fallbackMetadata: {
+                jobRole: roleName,
+                personality: personalityName,
+                difficulty: selectedDifficulty
+              }
+            });
+            console.log('✅ Successfully saved Vapi call data:', response.data);
+          } catch (error) {
+            console.error('Failed to save Vapi call:', error);
+          }
+        } else {
+          console.warn('No vapiCallId received, cannot save');
+        }
+        
+        setIsStartingInterview(false);
+      };
+      
+      vapiService.onCallStart = () => {
+        console.log('Vapi call started');
+      };
+      
+      vapiService.onError = (error) => {
+        console.error('Vapi error during interview:', error);
+        setIsStartingInterview(false);
+      };
+      
+      const result = await vapiService.startInterview(
+        personalityName,
+        roleName,  // ← Pass the role name to Vapi (this becomes {{jobRole}})
+        selectedDifficulty
+      );
+      
+      if (result.success) {
+        console.log('Interview started successfully:', result);
+        navigate('/vapi-call', {
+          state: {
+            personality: personalityName,
+            jobRole: roleName,  // ← Pass to VapiCallSession
+            difficulty: selectedDifficulty,
+            callId: result.callId
+          }
+        });
+      } else {
+        throw new Error('Failed to start interview');
+      }
+      
+    } catch (error) {
+      console.error('Failed to start interview:', error);
+      setVapiError(error.message || 'Failed to start interview. Please try again.');
+      setTimeout(() => setVapiError(null), 5000);
+      setIsStartingInterview(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-[#0A0F1E] text-white flex overflow-hidden">
@@ -298,7 +306,6 @@ const InterviewConfig = () => {
         transition={{ duration: 0.5 }}
         className="w-64 border-r border-white/10 bg-white/5 backdrop-blur-xl flex flex-col relative z-10 flex-shrink-0"
       >
-        {/* Logo */}
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center space-x-3">
             <div className="p-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg">
@@ -310,7 +317,6 @@ const InterviewConfig = () => {
           </div>
         </div>
 
-        {/* Navigation */}
         <nav className="flex-1 p-4 space-y-2">
           {navigationItems.map((item, index) => (
             <motion.button
@@ -331,7 +337,6 @@ const InterviewConfig = () => {
           ))}
         </nav>
 
-        {/* User Profile */}
         <div className="p-4 border-t border-white/10">
           <div className="bg-white/5 rounded-xl p-4 mb-3">
             <div className="flex items-center space-x-3 mb-3">
@@ -378,7 +383,6 @@ const InterviewConfig = () => {
             <p className="text-gray-400 text-lg">
               Customize your practice session
             </p>
-            {/* Vapi Status Indicator */}
             {vapiStatus === 'initializing' && (
               <div className="mt-2 text-sm text-yellow-400 flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></div>
@@ -399,7 +403,7 @@ const InterviewConfig = () => {
             )}
           </motion.div>
 
-          {/* Job Role Selection */}
+          {/* Job Role Selection - DYNAMIC FROM DATABASE */}
           <motion.section
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -409,16 +413,21 @@ const InterviewConfig = () => {
             <h2 className="text-2xl font-semibold mb-4 text-white">
               Select Job Role
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {jobRoles.map((role) => (
-                <JobRoleCard
-                  key={role.id}
-                  role={role}
-                  selected={selectedRole === role.id}
-                  onClick={() => setSelectedRole(role.id)}
-                />
-              ))}
-            </div>
+            {loadingRoles ? (
+              <div className="text-center text-gray-400 py-8">Loading job roles...</div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {jobRoles.map((role) => (
+                  <JobRoleCard
+                    key={role._id}
+                    role={role}
+                    selected={selectedRole === role._id || selectedRole === role.name}
+                    onClick={() => setSelectedRole(role._id)}
+                    getIconComponent={getIconComponent}
+                  />
+                ))}
+              </div>
+            )}
           </motion.section>
 
           {/* AI Interviewer Style */}
@@ -483,8 +492,8 @@ const InterviewConfig = () => {
   );
 };
 
-// Job Role Card Component
-const JobRoleCard = ({ role, selected, onClick }) => {
+// Updated Job Role Card Component - Now accepts dynamic props
+const JobRoleCard = ({ role, selected, onClick, getIconComponent }) => {
   return (
     <motion.div
       whileHover={{ scale: 1.05, y: -5 }}
@@ -502,10 +511,10 @@ const JobRoleCard = ({ role, selected, onClick }) => {
           : 'border-white/10 hover:border-white/20'
       }`}>
         <div className={`inline-flex p-3 rounded-xl bg-gradient-to-r ${role.gradient} mb-3`}>
-          {role.icon}
+          {getIconComponent(role.iconName, "h-8 w-8 text-white")}
         </div>
         <h3 className="text-lg font-semibold text-white mb-1">
-          {role.title}
+          {role.name}
         </h3>
         <p className="text-gray-400 text-sm">
           {role.description}

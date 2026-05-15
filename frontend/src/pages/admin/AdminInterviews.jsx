@@ -11,7 +11,8 @@ import {
   MicrophoneIcon,
   HomeIcon,
   ClockIcon,
-  EyeIcon
+  EyeIcon,
+  BriefcaseIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -37,10 +38,11 @@ const AdminInterviews = () => {
   const [showReportModal, setShowReportModal] = useState(false);
   const [viewingReport, setViewingReport] = useState(false);
 
-  const navigationItems = [
+    const navigationItems = [
     { name: 'Analytics', icon: <ChartBarIcon className="h-5 w-5" />, path: '/admin' },
     { name: 'Users', icon: <UserGroupIcon className="h-5 w-5" />, path: '/admin/users' },
-    { name: 'Interviews', icon: <DocumentTextIcon className="h-5 w-5" />, path: '/admin/interviews', active: true },
+    { name: 'Interviews', icon: <DocumentTextIcon className="h-5 w-5" />, path: '/admin/interviews' , active: true},
+    { name: 'Job Roles', icon: <BriefcaseIcon className="h-5 w-5" />, path: '/admin/job-roles' },
     { name: 'Vapi Settings', icon: <MicrophoneIcon className="h-5 w-5" />, path: '/admin/vapi-settings' },
     { name: 'Profile', icon: <HomeIcon className="h-5 w-5" />, path: '/profile' },
   ];

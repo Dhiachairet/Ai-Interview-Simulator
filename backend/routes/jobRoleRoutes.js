@@ -9,9 +9,11 @@ const {
 } = require('../controllers/jobRoleController');
 const { protect, adminOnly } = require('../middleware/auth');
 
-// Public route for users (this will be at /api/job-roles if you want public access)
-// For now, keep all under admin
-router.get('/', protect, adminOnly, getAllJobRoles);
+// ✅ PUBLIC ROUTE - No authentication (for /api/job-roles)
+router.get('/', getActiveJobRoles);
+
+// ✅ ADMIN ROUTES - Require authentication (for /api/admin/job-roles)
+router.get('/all', protect, adminOnly, getAllJobRoles);
 router.post('/', protect, adminOnly, createJobRole);
 router.put('/:id', protect, adminOnly, updateJobRole);
 router.delete('/:id', protect, adminOnly, deleteJobRole);

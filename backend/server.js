@@ -33,8 +33,12 @@ app.use('/api/admin', require('./routes/adminVapiRoutes'));
 // VAPI WEBHOOK ROUTE
 app.use('/webhook', require('./routes/vapiWebhook'));
 
-// ✅ JOB ROUTES - Only register once
-// Public routes for users
+// ✅ JOB ROUTES - Register BOTH public and admin routes
+// Public routes for users (no authentication)
+app.use('/api/job-roles', require('./routes/jobRoleRoutes'));
+
+// Admin routes (with authentication) - using the same routes file
+// The routes file handles which endpoints require auth
 app.use('/api/admin/job-roles', require('./routes/jobRoleRoutes'));
 
 // Start server

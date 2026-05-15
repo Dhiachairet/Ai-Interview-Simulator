@@ -15,7 +15,8 @@ import {
   DocumentTextIcon,
   MicrophoneIcon,
   HomeIcon,
-  Cog6ToothIcon
+  Cog6ToothIcon,
+  BriefcaseIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -43,10 +44,11 @@ const AdminUsers = () => {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
-  const navigationItems = [
+   const navigationItems = [
     { name: 'Analytics', icon: <ChartBarIcon className="h-5 w-5" />, path: '/admin' },
     { name: 'Users', icon: <UserGroupIcon className="h-5 w-5" />, path: '/admin/users', active: true },
     { name: 'Interviews', icon: <DocumentTextIcon className="h-5 w-5" />, path: '/admin/interviews' },
+    { name: 'Job Roles', icon: <BriefcaseIcon className="h-5 w-5" />, path: '/admin/job-roles' },
     { name: 'Vapi Settings', icon: <MicrophoneIcon className="h-5 w-5" />, path: '/admin/vapi-settings' },
     { name: 'Profile', icon: <HomeIcon className="h-5 w-5" />, path: '/profile' },
   ];

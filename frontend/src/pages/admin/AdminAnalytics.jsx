@@ -38,13 +38,14 @@ const AdminAnalytics = () => {
   const [statsLoading, setStatsLoading] = useState(true);
   const [userStats, setUserStats] = useState({ total: 0, activeUsers: 0, admins: 0 });
 
-  const navigationItems = [
-    { name: 'Analytics', icon: <ChartBarIcon className="h-5 w-5" />, path: '/admin', active: true },
-    { name: 'Users', icon: <UserGroupIcon className="h-5 w-5" />, path: '/admin/users' },
-    { name: 'Interviews', icon: <DocumentTextIcon className="h-5 w-5" />, path: '/admin/interviews' },
-    { name: 'Vapi Settings', icon: <MicrophoneIcon className="h-5 w-5" />, path: '/admin/vapi-settings' },
-    { name: 'Profile', icon: <HomeIcon className="h-5 w-5" />, path: '/profile' },
-  ];
+    const navigationItems = [
+      { name: 'Analytics', icon: <ChartBarIcon className="h-5 w-5" />, path: '/admin' , active: true},
+      { name: 'Users', icon: <UserGroupIcon className="h-5 w-5" />, path: '/admin/users' },
+      { name: 'Interviews', icon: <DocumentTextIcon className="h-5 w-5" />, path: '/admin/interviews' },
+      { name: 'Job Roles', icon: <BriefcaseIcon className="h-5 w-5" />, path: '/admin/job-roles' },
+      { name: 'Vapi Settings', icon: <MicrophoneIcon className="h-5 w-5" />, path: '/admin/vapi-settings' },
+      { name: 'Profile', icon: <HomeIcon className="h-5 w-5" />, path: '/profile' },
+    ];
 
   useEffect(() => {
     if (!user || user.role !== 'admin') {
