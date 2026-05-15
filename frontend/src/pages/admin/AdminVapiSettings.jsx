@@ -72,10 +72,9 @@ const getNavigationItems = () => {
   if (user?.role === 'admin') {
     return [
       { name: 'Analytics', icon: <ChartBarIcon className="h-5 w-5" />, path: '/admin', active: false },
-      { name: 'Users', icon: <UserGroupIcon className="h-5 w-5" />, path: '/admin', active: false },
-      { name: 'Interviews', icon: <ClipboardDocumentListIcon className="h-5 w-5" />, path: '/admin', active: false },
+      { name: 'Users', icon: <UserGroupIcon className="h-5 w-5" />, path: '/admin/users', active: false },
+      { name: 'Interviews', icon: <ClipboardDocumentListIcon className="h-5 w-5" />, path: '/admin/interviews', active: false },
       { name: 'Job Roles', icon: <BriefcaseIcon className="h-5 w-5" />, path: '/admin/job-roles', active: false },
-
       { name: 'Vapi Settings', icon: <MicrophoneIcon className="h-5 w-5" />, path: '/admin/vapi-settings', active: true },
       { name: 'Profile', icon: <UserCircleIcon className="h-5 w-5" />, path: '/profile', active: false },
     ];

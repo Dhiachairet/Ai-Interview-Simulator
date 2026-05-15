@@ -283,22 +283,11 @@ const AdminInterviews = () => {
                 <input
                   value={interviewQuery}
                   onChange={(event) => setInterviewQuery(event.target.value)}
-                  placeholder="Search by user, role, or status"
+                  placeholder="Search by user or role..."
                   className="w-full pl-10 pr-4 py-2 rounded-xl bg-[#0F1428] border border-white/10 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                 />
               </div>
-              <div className="flex items-center gap-3">
-                <select
-                  value={interviewStatus}
-                  onChange={(event) => setInterviewStatus(event.target.value)}
-                  className="px-4 py-2 rounded-xl bg-[#0F1428] border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                >
-                  <option value="all">All Status</option>
-                  <option value="completed">Completed</option>
-                  <option value="in-progress">In Progress</option>
-                  <option value="evaluating">Evaluating</option>
-                </select>
-              </div>
+              
             </div>
 
             {error && (
