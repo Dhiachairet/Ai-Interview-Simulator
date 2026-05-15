@@ -53,7 +53,12 @@ const adminService = {
       console.error('Get system stats error:', error);
       return { success: false, data: {} };
     }
-  }
+  },
+  getInterviewById: async (id) => {
+  const response = await api.get(`/api/admin/interviews/${id}`);
+  return response.data;
+},
+  
   
 };
 

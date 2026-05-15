@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   UserGroupIcon,
   ShieldCheckIcon,
@@ -10,8 +10,8 @@ import {
   DocumentTextIcon,
   MicrophoneIcon,
   HomeIcon,
-  Cog6ToothIcon,
-  ClockIcon
+  ClockIcon,
+  EyeIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -31,6 +31,11 @@ const AdminInterviews = () => {
     avgOverallScore: 0,
     totalDuration: 0
   });
+  
+  // Report modal state
+  const [selectedInterview, setSelectedInterview] = useState(null);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [viewingReport, setViewingReport] = useState(false);
 
   const navigationItems = [
     { name: 'Analytics', icon: <ChartBarIcon className="h-5 w-5" />, path: '/admin' },
@@ -105,10 +110,55 @@ const AdminInterviews = () => {
     }
   };
 
+  const handleViewReport = async (interviewId) => {
+    try {
+      setViewingReport(true);
+      const response = await adminService.getInterviewById(interviewId);
+      if (response.success) {
+        setSelectedInterview(response.data);
+        setShowReportModal(true);
+      } else {
+        setError('Failed to load interview report');
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to load interview report');
+    } finally {
+      setViewingReport(false);
+    }
+  };
+
+  const calculateOverallScore = (interview) => {
+    if (!interview) return 0;
+    
+    if (interview.report?.overallScore && interview.report.overallScore > 0) {
+      return interview.report.overallScore;
+    }
+    
+    if (interview.questions && interview.questions.length > 0) {
+      const scores = interview.questions.filter(q => q.score && q.score > 0).map(q => q.score);
+      if (scores.length > 0) {
+        return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+      }
+    }
+    
+    return 0;
+  };
+
   const getScoreColor = (score) => {
     if (score >= 80) return 'text-green-400';
     if (score >= 60) return 'text-yellow-400';
     return 'text-red-400';
+  };
+
+  const getScoreBg = (score) => {
+    if (score >= 80) return '#22c55e';
+    if (score >= 60) return '#eab308';
+    return '#ef4444';
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Unknown date';
+    return new Date(dateString).toLocaleString();
   };
 
   return (
@@ -300,14 +350,24 @@ const AdminInterviews = () => {
                           {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : 'Unknown'}
                         </td>
                         <td className="py-4 text-right">
-                          <button
-                            onClick={() => handleDeleteInterview(item._id)}
-                            disabled={deletingId === item._id}
-                            title="Delete interview"
-                            className="p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-red-300 disabled:opacity-50"
-                          >
-                            <TrashIcon className="h-4 w-4" />
-                          </button>
+                          <div className="inline-flex items-center gap-2">
+                            <button
+                              onClick={() => handleViewReport(item._id)}
+                              disabled={viewingReport}
+                              title="View full report"
+                              className="p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-blue-400 disabled:opacity-50"
+                            >
+                              <EyeIcon className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteInterview(item._id)}
+                              disabled={deletingId === item._id}
+                              title="Delete interview"
+                              className="p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-red-300 disabled:opacity-50"
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -322,6 +382,236 @@ const AdminInterviews = () => {
           </div>
         </div>
       </main>
+
+      {/* Report Modal */}
+      <AnimatePresence>
+        {showReportModal && selectedInterview && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto"
+            onClick={() => setShowReportModal(false)}
+          >
+            <motion.div
+              initial={{ y: 50, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 50, opacity: 0 }}
+              className="relative bg-[#0F1428] border border-white/20 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="sticky top-0 bg-[#0F1428] border-b border-white/10 p-6 flex justify-between items-center z-10">
+                <div>
+                  <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                    Interview Report
+                  </h2>
+                  <p className="text-gray-400 text-sm mt-1">
+                    {selectedInterview.user?.name || 'Unknown User'} • {selectedInterview.jobRole}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowReportModal(false)}
+                  className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Modal Content */}
+              <div className="p-6 space-y-6">
+                {/* Overall Score */}
+                <div className="text-center">
+                  <div className="inline-block">
+                    <div className="relative w-32 h-32">
+                      <svg className="w-32 h-32 transform -rotate-90">
+                        <circle
+                          cx="64"
+                          cy="64"
+                          r="58"
+                          stroke="rgba(255,255,255,0.1)"
+                          strokeWidth="8"
+                          fill="none"
+                        />
+                        <circle
+                          cx="64"
+                          cy="64"
+                          r="58"
+                          stroke={getScoreBg(calculateOverallScore(selectedInterview))}
+                          strokeWidth="8"
+                          fill="none"
+                          strokeDasharray="364.4"
+                          strokeDashoffset={364.4 * (1 - calculateOverallScore(selectedInterview) / 100)}
+                        />
+                      </svg>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-3xl font-bold">{calculateOverallScore(selectedInterview)}%</span>
+                      </div>
+                    </div>
+                    <p className="text-sm text-gray-400 mt-2">Overall Score</p>
+                  </div>
+                </div>
+
+                {/* Interview Info */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-white/5 rounded-xl p-3">
+                    <p className="text-xs text-gray-400">Job Role</p>
+                    <p className="text-sm font-semibold mt-1">{selectedInterview.jobRole}</p>
+                  </div>
+                  <div className="bg-white/5 rounded-xl p-3">
+                    <p className="text-xs text-gray-400">Personality</p>
+                    <p className="text-sm font-semibold mt-1">{selectedInterview.personality}</p>
+                  </div>
+                  <div className="bg-white/5 rounded-xl p-3">
+                    <p className="text-xs text-gray-400">Difficulty</p>
+                    <p className="text-sm font-semibold mt-1 capitalize">{selectedInterview.difficulty}</p>
+                  </div>
+                  <div className="bg-white/5 rounded-xl p-3">
+                    <p className="text-xs text-gray-400">Date</p>
+                    <p className="text-sm font-semibold mt-1">
+                      {formatDate(selectedInterview.createdAt)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Communication & Technical Scores */}
+                {(selectedInterview.report?.communicationScore || selectedInterview.report?.technicalScore) && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {selectedInterview.report?.communicationScore && (
+                      <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
+                        <div className="flex justify-between items-center mb-2">
+                          <h3 className="font-semibold text-blue-400">Communication Score</h3>
+                          <span className="text-xl font-bold text-blue-400">{selectedInterview.report.communicationScore}%</span>
+                        </div>
+                        <div className="w-full bg-white/10 rounded-full h-2">
+                          <div 
+                            className="bg-blue-500 h-2 rounded-full"
+                            style={{ width: `${selectedInterview.report.communicationScore}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {selectedInterview.report?.technicalScore && (
+                      <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4">
+                        <div className="flex justify-between items-center mb-2">
+                          <h3 className="font-semibold text-green-400">Technical Score</h3>
+                          <span className="text-xl font-bold text-green-400">{selectedInterview.report.technicalScore}%</span>
+                        </div>
+                        <div className="w-full bg-white/10 rounded-full h-2">
+                          <div 
+                            className="bg-green-500 h-2 rounded-full"
+                            style={{ width: `${selectedInterview.report.technicalScore}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Confidence Level */}
+                {selectedInterview.report?.confidenceLevel && (
+                  <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-4">
+                    <h3 className="font-semibold text-purple-400 mb-2">Confidence Level</h3>
+                    <p className="text-lg font-semibold">{selectedInterview.report.confidenceLevel}</p>
+                  </div>
+                )}
+
+                {/* Strengths & Improvements */}
+                {(selectedInterview.report?.strengths?.length > 0 || selectedInterview.report?.improvements?.length > 0) && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {selectedInterview.report?.strengths?.length > 0 && (
+                      <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4">
+                        <h3 className="font-semibold text-green-400 mb-3">✅ Strengths</h3>
+                        <ul className="space-y-2">
+                          {selectedInterview.report.strengths.map((s, i) => (
+                            <li key={i} className="text-sm text-gray-300">{s}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {selectedInterview.report?.improvements?.length > 0 && (
+                      <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4">
+                        <h3 className="font-semibold text-yellow-400 mb-3">📈 Areas for Improvement</h3>
+                        <ul className="space-y-2">
+                          {selectedInterview.report.improvements.map((i, idx) => (
+                            <li key={idx} className="text-sm text-gray-300">{i}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Summary */}
+                {selectedInterview.report?.summary && (
+                  <div className="bg-white/5 rounded-xl p-4">
+                    <h3 className="font-semibold text-blue-400 mb-2">📝 Summary</h3>
+                    <p className="text-sm text-gray-300 leading-relaxed">{selectedInterview.report.summary}</p>
+                  </div>
+                )}
+
+                {/* Duration */}
+                {selectedInterview.duration > 0 && (
+                  <div className="bg-white/5 rounded-xl p-4">
+                    <h3 className="font-semibold text-gray-400 mb-2">⏱️ Duration</h3>
+                    <p className="text-sm text-gray-300">
+                      {Math.floor(selectedInterview.duration / 60)} minutes {selectedInterview.duration % 60} seconds
+                    </p>
+                  </div>
+                )}
+
+                {/* Question Breakdown */}
+                {selectedInterview.questions && selectedInterview.questions.length > 0 && (
+                  <div className="space-y-4">
+                    <h3 className="font-semibold text-white text-lg">Question Breakdown</h3>
+                    {selectedInterview.questions.map((q, idx) => (
+                      <div key={idx} className="bg-white/5 rounded-xl p-4 border border-white/10">
+                        <div className="flex justify-between items-start mb-3">
+                          <span className="text-xs text-blue-400 font-medium px-2 py-1 bg-blue-500/20 rounded">
+                            Q{idx + 1}
+                          </span>
+                          {q.score > 0 && (
+                            <span className={`text-xs font-medium px-2 py-1 rounded ${
+                              q.score >= 80 ? 'bg-green-500/20 text-green-400' :
+                              q.score >= 60 ? 'bg-yellow-500/20 text-yellow-400' :
+                              'bg-red-500/20 text-red-400'
+                            }`}>
+                              Score: {q.score}%
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-white font-medium mb-3 leading-relaxed">{q.question}</p>
+                        {q.userAnswer && (
+                          <div className="mt-3 p-3 bg-blue-500/10 rounded-lg">
+                            <p className="text-xs text-blue-400 mb-1">Candidate's Answer:</p>
+                            <p className="text-sm text-gray-300 leading-relaxed">{q.userAnswer}</p>
+                          </div>
+                        )}
+                        {q.feedback && (
+                          <div className="mt-3 p-3 bg-purple-500/10 rounded-lg">
+                            <p className="text-xs text-purple-400 mb-1">AI Feedback:</p>
+                            <p className="text-sm text-gray-300 leading-relaxed">{q.feedback}</p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="sticky bottom-0 bg-[#0F1428] border-t border-white/10 p-4 flex justify-end gap-3">
+                <button
+                  onClick={() => setShowReportModal(false)}
+                  className="px-4 py-2 bg-white/10 rounded-lg text-white hover:bg-white/20 transition"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <style>{`
         @keyframes blob {

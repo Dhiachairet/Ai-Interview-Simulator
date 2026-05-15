@@ -293,6 +293,26 @@ const deleteInterview = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };  
+
+// @desc    Get any interview by ID (admin only)
+// @route   GET /api/admin/interviews/:id
+// @access  Private/Admin
+const getInterviewById = async (req, res) => {
+  try {
+    const interview = await Interview.findById(req.params.id)
+      .populate('user', 'name email role');
+    
+    if (!interview) {
+      return res.status(404).json({ success: false, error: 'Interview not found' });
+    }
+    
+    res.status(200).json({ success: true, data: interview });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+
 // @desc    Get system statistics for admin dashboard
 // @route   GET /api/admin/stats
 // @access  Private/Admin
@@ -379,5 +399,6 @@ module.exports = {
   activateUser,
   listInterviews,
   deleteInterview,
-  getSystemStats
+  getSystemStats,
+  getInterviewById
 };
