@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const Interview = require('../models/Interview');
+const JobRole = require('../models/JobRole');
 
 const buildUserQuery = (query, role) => {
   const filter = {};
@@ -271,7 +272,27 @@ const listInterviews = async (req, res) => {
       .populate('user', 'name email role')
       .sort('-createdAt');
 
-    res.status(200).json({ success: true, data: interviews });
+    // Calculate display score for each interview
+    const interviewsWithScores = interviews.map(interview => {
+      let displayScore = interview.overallScore || interview.report?.overallScore || 0;
+      
+      // If still 0, calculate from questions
+      if (displayScore === 0 && interview.questions && interview.questions.length > 0) {
+        const scores = interview.questions.filter(q => q.score && q.score > 0).map(q => q.score);
+        if (scores.length > 0) {
+          displayScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+        }
+      }
+      
+      // Convert to plain object and add display score
+      const interviewObj = interview.toObject();
+      interviewObj.displayScore = displayScore;
+      interviewObj.overallScore = displayScore; // Override the root score for display
+      
+      return interviewObj;
+    });
+
+    res.status(200).json({ success: true, data: interviewsWithScores });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -306,12 +327,27 @@ const getInterviewById = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Interview not found' });
     }
     
-    res.status(200).json({ success: true, data: interview });
+    // Calculate proper score if needed
+    const interviewObj = interview.toObject();
+    let displayScore = interviewObj.overallScore || interviewObj.report?.overallScore || 0;
+    
+    if (displayScore === 0 && interviewObj.questions && interviewObj.questions.length > 0) {
+      const scores = interviewObj.questions.filter(q => q.score && q.score > 0).map(q => q.score);
+      if (scores.length > 0) {
+        displayScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+      }
+    }
+    
+    interviewObj.calculatedScore = displayScore;
+    if (displayScore > 0 && interviewObj.overallScore === 0) {
+      interviewObj.overallScore = displayScore;
+    }
+    
+    res.status(200).json({ success: true, data: interviewObj });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 };
-
 
 // @desc    Get system statistics for admin dashboard
 // @route   GET /api/admin/stats
@@ -322,11 +358,36 @@ const getSystemStats = async (req, res) => {
     const totalInterviews = await Interview.countDocuments();
     const completedInterviews = await Interview.countDocuments({ status: 'completed' });
     
-    // Calculate average score from completed interviews
-    const completed = await Interview.find({ status: 'completed', overallScore: { $exists: true } });
-    const avgScore = completed.length > 0
-      ? Math.round(completed.reduce((acc, i) => acc + (i.overallScore || 0), 0) / completed.length)
-      : 0;
+    // Calculate average score from completed interviews - check multiple locations
+    const completed = await Interview.find({ status: 'completed' });
+    
+    let totalScore = 0;
+    let scoreCount = 0;
+    
+    for (const interview of completed) {
+      // Try multiple locations for the score
+      let score = interview.overallScore || 
+                  interview.report?.overallScore || 
+                  interview.report?.overallScore || 0;
+      
+      // If still 0, calculate from questions
+      if (score === 0 && interview.questions && interview.questions.length > 0) {
+        const questionScores = interview.questions
+          .filter(q => q.score && q.score > 0)
+          .map(q => q.score);
+        
+        if (questionScores.length > 0) {
+          score = Math.round(questionScores.reduce((a, b) => a + b, 0) / questionScores.length);
+        }
+      }
+      
+      if (score > 0) {
+        totalScore += score;
+        scoreCount++;
+      }
+    }
+    
+    const avgScore = scoreCount > 0 ? Math.round(totalScore / scoreCount) : 0;
     
     // Active users in last 30 days
     const thirtyDaysAgo = new Date();
@@ -350,24 +411,53 @@ const getSystemStats = async (req, res) => {
       interviewsByPersonality[p] = await Interview.countDocuments({ personality: p });
     }
     
-    // Interviews by job role
-    const roles = ['Frontend Developer', 'Backend Developer', 'HR Manager', 'Product Manager', 'Data Scientist'];
-    const interviewsByRole = {};
-    for (const r of roles) {
-      interviewsByRole[r] = await Interview.countDocuments({ jobRole: r });
+    // Get dynamic job roles from database
+    let interviewsByRole = {};
+    try {
+      const jobRolesFromDB = await JobRole.find({ isActive: true }).sort('order');
+      if (jobRolesFromDB.length > 0) {
+        for (const role of jobRolesFromDB) {
+          interviewsByRole[role.name] = await Interview.countDocuments({ jobRole: role.name });
+        }
+      } else {
+        // Fallback to hardcoded roles if no roles in DB
+        const roles = ['Frontend Developer', 'Backend Developer', 'HR Manager', 'Product Manager', 'Data Scientist'];
+        for (const r of roles) {
+          interviewsByRole[r] = await Interview.countDocuments({ jobRole: r });
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching job roles for stats:', error);
+      // Fallback to hardcoded roles
+      const roles = ['Frontend Developer', 'Backend Developer', 'HR Manager', 'Product Manager', 'Data Scientist'];
+      for (const r of roles) {
+        interviewsByRole[r] = await Interview.countDocuments({ jobRole: r });
+      }
     }
     
-    // Recent activity (last 10 completed interviews)
+    // Recent activity with correct scores
     const recentActivityData = await Interview.find({ status: 'completed' })
       .populate('user', 'name')
       .sort('-completedAt')
       .limit(10)
-      .select('user jobRole overallScore completedAt');
+      .select('user jobRole overallScore report questions completedAt createdAt');
     
-    const recentActivity = recentActivityData.map(interview => ({
-      message: `${interview.user?.name || 'User'} completed ${interview.jobRole} interview with score ${interview.overallScore || 0}%`,
-      time: interview.completedAt ? new Date(interview.completedAt).toLocaleString() : new Date(interview.createdAt).toLocaleString()
-    }));
+    const recentActivity = recentActivityData.map(interview => {
+      // Get the correct score
+      let score = interview.overallScore || interview.report?.overallScore || 0;
+      
+      if (score === 0 && interview.questions && interview.questions.length > 0) {
+        const scores = interview.questions.filter(q => q.score && q.score > 0).map(q => q.score);
+        if (scores.length > 0) {
+          score = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+        }
+      }
+      
+      return {
+        message: `${interview.user?.name || 'User'} completed ${interview.jobRole} interview with score ${Math.round(score)}%`,
+        time: interview.completedAt ? new Date(interview.completedAt).toLocaleString() : new Date(interview.createdAt).toLocaleString()
+      };
+    });
     
     res.status(200).json({
       success: true,
