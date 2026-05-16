@@ -41,6 +41,9 @@ app.use('/api/job-roles', require('./routes/jobRoleRoutes'));
 // The routes file handles which endpoints require auth
 app.use('/api/admin/job-roles', require('./routes/jobRoleRoutes'));
 
+// Resume routes
+app.use('/api/resume', require('./routes/resumeRoutes'));
+
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

@@ -18,7 +18,10 @@ import {
   ServerIcon,
   CubeIcon,
   ChartPieIcon,
-  ArrowRightOnRectangleIcon
+  ArrowRightOnRectangleIcon,
+  DocumentArrowUpIcon,
+  DocumentTextIcon,
+  XMarkIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -47,9 +50,18 @@ const InterviewConfig = () => {
   const [jobRoles, setJobRoles] = useState([]);
   const [loadingRoles, setLoadingRoles] = useState(true);
 
+  // Resume states
+  const [resumeFile, setResumeFile] = useState(null);
+  const [uploadingResume, setUploadingResume] = useState(false);
+  const [parsedResume, setParsedResume] = useState(null);
+  const [useResumeContext, setUseResumeContext] = useState(false);
+  const [resumeMode, setResumeMode] = useState(false);
+  const [detectedRole, setDetectedRole] = useState(null);
+
   // Fetch job roles from database
   useEffect(() => {
     fetchJobRoles();
+    loadExistingResume();
   }, []);
 
   const fetchJobRoles = async () => {
@@ -59,15 +71,69 @@ const InterviewConfig = () => {
       if (response.data.success && response.data.data.length > 0) {
         setJobRoles(response.data.data);
       } else {
-        // Fallback to static roles if no roles in DB
         setJobRoles(fallbackJobRoles);
       }
     } catch (error) {
       console.error('Failed to fetch job roles:', error);
-      // Fallback to static roles
       setJobRoles(fallbackJobRoles);
     } finally {
       setLoadingRoles(false);
+    }
+  };
+
+  const loadExistingResume = async () => {
+    try {
+      const response = await api.get('/api/resume');
+      if (response.data.success && response.data.data) {
+        const resumeData = response.data.data.parsedData;
+        setParsedResume(resumeData);
+        setResumeMode(true);
+        setUseResumeContext(true);
+        if (resumeData.detectedJobRole) setDetectedRole(resumeData.detectedJobRole);
+      }
+    } catch (error) {
+      console.error('Failed to load existing resume:', error);
+    }
+  };
+
+  const handleResumeUpload = async (file) => {
+    const formData = new FormData();
+    formData.append('resume', file);
+    setUploadingResume(true);
+    setResumeFile(file);
+    
+    try {
+      const response = await api.post('/api/resume/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      
+      if (response.data.success) {
+        const resumeData = response.data.data.parsedData;
+        setParsedResume(resumeData);
+        if (resumeData.detectedJobRole) setDetectedRole(resumeData.detectedJobRole);
+        setResumeMode(true);
+        setUseResumeContext(true);
+        console.log('✅ Resume parsed successfully');
+      }
+    } catch (error) {
+      console.error('Upload failed:', error);
+      alert(error.response?.data?.error || 'Failed to upload resume');
+    } finally {
+      setUploadingResume(false);
+    }
+  };
+
+  const handleRemoveResume = async () => {
+    try {
+      await api.delete('/api/resume');
+      setParsedResume(null);
+      setResumeFile(null);
+      setResumeMode(false);
+      setUseResumeContext(false);
+      setDetectedRole(null);
+      setSelectedRole(null);
+    } catch (error) {
+      console.error('Failed to delete resume:', error);
     }
   };
 
@@ -92,9 +158,9 @@ const InterviewConfig = () => {
       const publicKey = import.meta.env.VITE_VAPI_PUBLIC_KEY;
       
       if (!publicKey) {
-        console.error('VITE_VAPI_PUBLIC_KEY not found in environment variables');
+        console.error('VITE_VAPI_PUBLIC_KEY not found');
         setVapiStatus('error');
-        setVapiError('Vapi configuration missing. Please check your environment variables.');
+        setVapiError('Vapi configuration missing');
         return;
       }
       
@@ -102,7 +168,6 @@ const InterviewConfig = () => {
       
       setTimeout(() => {
         const initialized = vapiService.initialize(publicKey);
-        
         if (initialized) {
           setVapiStatus('ready');
           console.log('Vapi service ready');
@@ -179,11 +244,20 @@ const InterviewConfig = () => {
   };
 
   const getSessionSummary = () => {
+    // If using resume mode, show resume-based summary
+    if (resumeMode && useResumeContext && parsedResume) {
+      return {
+        role: parsedResume.detectedJobRole || 'Your Profile',
+        style: selectedStyle ? interviewerStyles.find(s => s.id === selectedStyle)?.name : 'Not selected',
+        difficulty: selectedDifficulty.charAt(0).toUpperCase() + selectedDifficulty.slice(1),
+        description: `You'll face a ${selectedDifficulty}-level interview based on your resume. The AI will ask personalized questions about your skills in ${parsedResume.skills?.slice(0, 3).join(', ') || 'various areas'} and your experience${parsedResume.experience?.length > 0 ? ` at ${parsedResume.experience[0]?.company}` : ''}.`
+      };
+    }
+    
+    // Otherwise use selected job role
     if (!selectedRole || !selectedStyle || !selectedDifficulty) return null;
-
     const role = jobRoles.find(r => r._id === selectedRole || r.name === selectedRole);
     const style = interviewerStyles.find(s => s.id === selectedStyle);
-    
     return {
       role: role?.name || selectedRole,
       style: style?.name,
@@ -195,14 +269,19 @@ const InterviewConfig = () => {
   const sessionSummary = getSessionSummary();
 
   const handleBeginInterview = async () => {
-    if (!selectedRole || !selectedStyle) {
-      console.warn('Please select both a job role and interviewer style');
+    // Validate: either resume mode with context OR selected role
+    if (!resumeMode && !selectedRole) {
+      alert('Please either select a job role or upload a resume');
+      return;
+    }
+    
+    if (!selectedStyle) {
+      alert('Please select an interviewer style');
       return;
     }
     
     if (vapiStatus !== 'ready') {
-      console.error('Vapi is not ready. Status:', vapiStatus);
-      setVapiError('Interview service is initializing. Please wait a moment and try again.');
+      setVapiError('Interview service is initializing. Please wait a moment.');
       setTimeout(() => setVapiError(null), 3000);
       return;
     }
@@ -211,50 +290,40 @@ const InterviewConfig = () => {
     
     try {
       const personalityName = PERSONALITY_MAP[selectedStyle];
+      let roleName;
       
-      // Get the role name (either from DB or fallback)
-      let roleName = selectedRole;
-      const selectedRoleObj = jobRoles.find(r => r._id === selectedRole || r.name === selectedRole);
-      if (selectedRoleObj) {
-        roleName = selectedRoleObj.name;
+      // Determine job role - either from resume or selected role
+      if (resumeMode && useResumeContext && parsedResume) {
+        roleName = parsedResume.detectedJobRole || 'Software Developer';
+        console.log('📄 Using resume-detected role:', roleName);
+      } else if (selectedRole) {
+        const selectedRoleObj = jobRoles.find(r => r._id === selectedRole);
+        roleName = selectedRoleObj?.name || selectedRole;
+      } else {
+        throw new Error('No job role selected or detected');
       }
       
       if (!personalityName) throw new Error(`Invalid personality: ${selectedStyle}`);
-      if (!roleName) throw new Error(`Invalid job role: ${selectedRole}`);
       
       console.log('Starting interview with:', {
         personality: personalityName,
-        jobRole: roleName,  // ← This will be passed as {{jobRole}} to Vapi
-        difficulty: selectedDifficulty
+        jobRole: roleName,
+        difficulty: selectedDifficulty,
+        usingResumeContext: resumeMode && useResumeContext && !!parsedResume
       });
       
-      // Set up call-end handler to save the Vapi call
+      // Set up call-end handler
       vapiService.onCallEnd = async (vapiCallId) => {
         console.log('Vapi call ended, saving call ID:', vapiCallId);
-        
         if (vapiCallId) {
           try {
-            const response = await api.post('/api/interview/save-vapi-call', { 
+            await api.post('/api/interview/save-vapi-call', { 
               vapiCallId,
-              fallbackMetadata: {
-                jobRole: roleName,
-                personality: personalityName,
-                difficulty: selectedDifficulty
-              }
+              fallbackMetadata: { jobRole: roleName, personality: personalityName, difficulty: selectedDifficulty }
             });
-            console.log('✅ Successfully saved Vapi call data:', response.data);
-          } catch (error) {
-            console.error('Failed to save Vapi call:', error);
-          }
-        } else {
-          console.warn('No vapiCallId received, cannot save');
+          } catch (error) { console.error('Failed to save call:', error); }
         }
-        
         setIsStartingInterview(false);
-      };
-      
-      vapiService.onCallStart = () => {
-        console.log('Vapi call started');
       };
       
       vapiService.onError = (error) => {
@@ -262,20 +331,22 @@ const InterviewConfig = () => {
         setIsStartingInterview(false);
       };
       
+      // Start interview with or without resume data
       const result = await vapiService.startInterview(
         personalityName,
-        roleName,  // ← Pass the role name to Vapi (this becomes {{jobRole}})
-        selectedDifficulty
+        roleName,
+        selectedDifficulty,
+        (resumeMode && useResumeContext && parsedResume) ? parsedResume : null
       );
       
       if (result.success) {
-        console.log('Interview started successfully:', result);
         navigate('/vapi-call', {
           state: {
             personality: personalityName,
-            jobRole: roleName,  // ← Pass to VapiCallSession
+            jobRole: roleName,
             difficulty: selectedDifficulty,
-            callId: result.callId
+            callId: result.callId,
+            hasResumeContext: resumeMode && useResumeContext && !!parsedResume
           }
         });
       } else {
@@ -284,7 +355,7 @@ const InterviewConfig = () => {
       
     } catch (error) {
       console.error('Failed to start interview:', error);
-      setVapiError(error.message || 'Failed to start interview. Please try again.');
+      setVapiError(error.message || 'Failed to start interview.');
       setTimeout(() => setVapiError(null), 5000);
       setIsStartingInterview(false);
     }
@@ -341,17 +412,11 @@ const InterviewConfig = () => {
           <div className="bg-white/5 rounded-xl p-4 mb-3">
             <div className="flex items-center space-x-3 mb-3">
               <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
-                <span className="text-white font-bold text-sm">
-                  {user?.name?.charAt(0) || 'A'}
-                </span>
+                <span className="text-white font-bold text-sm">{user?.name?.charAt(0) || 'A'}</span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-white font-medium text-sm truncate">
-                  {user?.name || 'Alex Johnson'}
-                </p>
-                <p className="text-gray-400 text-xs truncate">
-                  {user?.email || 'alex@example.com'}
-                </p>
+                <p className="text-white font-medium text-sm truncate">{user?.name || 'User'}</p>
+                <p className="text-gray-400 text-xs truncate">{user?.email || 'user@example.com'}</p>
               </div>
             </div>
             <motion.button
@@ -381,7 +446,7 @@ const InterviewConfig = () => {
               Configure Interview
             </h1>
             <p className="text-gray-400 text-lg">
-              Customize your practice session
+              Customize your practice session or upload your resume for personalized questions
             </p>
             {vapiStatus === 'initializing' && (
               <div className="mt-2 text-sm text-yellow-400 flex items-center gap-2">
@@ -403,32 +468,140 @@ const InterviewConfig = () => {
             )}
           </motion.div>
 
-          {/* Job Role Selection - DYNAMIC FROM DATABASE */}
+          {/* Resume Upload Section */}
           <motion.section
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
+            transition={{ delay: 0.05 }}
             className="mb-8"
           >
             <h2 className="text-2xl font-semibold mb-4 text-white">
-              Select Job Role
+              Upload Your Resume
             </h2>
-            {loadingRoles ? (
-              <div className="text-center text-gray-400 py-8">Loading job roles...</div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {jobRoles.map((role) => (
-                  <JobRoleCard
-                    key={role._id}
-                    role={role}
-                    selected={selectedRole === role._id || selectedRole === role.name}
-                    onClick={() => setSelectedRole(role._id)}
-                    getIconComponent={getIconComponent}
-                  />
-                ))}
-              </div>
-            )}
+            <div className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+              
+              {!parsedResume ? (
+                <div className="text-center">
+                  <label className="cursor-pointer inline-flex flex-col items-center group">
+                    <div className="p-5 bg-blue-500/20 rounded-full mb-4 group-hover:bg-blue-500/30 transition-all duration-300">
+                      <DocumentArrowUpIcon className="h-10 w-10 text-blue-400" />
+                    </div>
+                    <span className="text-white font-medium mb-1">Upload Resume / CV</span>
+                    <span className="text-gray-400 text-sm">PDF or DOCX (Max 5MB)</span>
+                    <input
+                      type="file"
+                      accept=".pdf,.docx"
+                      onChange={(e) => handleResumeUpload(e.target.files[0])}
+                      className="hidden"
+                      disabled={uploadingResume}
+                    />
+                  </label>
+                  {uploadingResume && (
+                    <div className="mt-4 flex items-center justify-center gap-2">
+                      <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                      <span className="text-sm text-gray-400">Analyzing resume...</span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <div className="flex items-center justify-between mb-4 pb-4 border-b border-white/10">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-green-500/20 rounded-lg">
+                        <DocumentTextIcon className="h-6 w-6 text-green-400" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-semibold text-white">
+                          {parsedResume.name || 'Resume Uploaded'}
+                        </h3>
+                        <p className="text-sm text-gray-400">{resumeFile?.name || 'Resume file'}</p>
+                      </div>
+                    </div>
+                    <button onClick={handleRemoveResume} className="p-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 transition">
+                      <XMarkIcon className="h-5 w-5" />
+                    </button>
+                  </div>
+                  
+                  {parsedResume.detectedJobRole && (
+                    <div className="bg-blue-500/10 rounded-lg p-3 mb-4">
+                      <p className="text-xs text-blue-400 mb-1">Detected Job Role</p>
+                      <p className="text-white font-medium">{parsedResume.detectedJobRole}</p>
+                      
+                    </div>
+                  )}
+                  
+                  {parsedResume.skills?.length > 0 && (
+                    <div className="bg-white/5 rounded-lg p-3 mb-4">
+                      <p className="text-xs text-gray-400 mb-2">Key Skills</p>
+                      <div className="flex flex-wrap gap-2">
+                        {parsedResume.skills.slice(0, 8).map((skill, i) => (
+                          <span key={i} className="px-2 py-1 bg-white/10 rounded-full text-xs text-gray-300">
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="mt-4 flex items-center gap-3 p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                    <input
+                      type="checkbox"
+                      id="useResumeContext"
+                      checked={useResumeContext}
+                      onChange={(e) => setUseResumeContext(e.target.checked)}
+                      className="w-4 h-4 rounded border-white/20 accent-blue-500"
+                    />
+                    <label htmlFor="useResumeContext" className="text-sm text-gray-300 cursor-pointer">
+                      Personalize interview questions based on my resume
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
           </motion.section>
+
+          {/* OR Divider */}
+          {!parsedResume && (
+            <div className="relative my-8">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-white/10"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-4 py-1.5 bg-white/10 rounded-full text-gray-400 text-xs uppercase tracking-wider">
+                  Or
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Job Role Selection - Only show if no resume OR resume not using context */}
+          {(!parsedResume || !useResumeContext) && (
+            <motion.section
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="mb-8"
+            >
+              <h2 className="text-2xl font-semibold mb-4 text-white">
+                Select Job Role
+              </h2>
+              {loadingRoles ? (
+                <div className="text-center text-gray-400 py-8">Loading job roles...</div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {jobRoles.map((role) => (
+                    <JobRoleCard
+                      key={role._id}
+                      role={role}
+                      selected={selectedRole === role._id}
+                      onClick={() => setSelectedRole(role._id)}
+                      getIconComponent={getIconComponent}
+                    />
+                  ))}
+                </div>
+              )}
+            </motion.section>
+          )}
 
           {/* AI Interviewer Style */}
           <motion.section
@@ -470,7 +643,7 @@ const InterviewConfig = () => {
 
           {/* Session Preview */}
           <AnimatePresence>
-            {sessionSummary && (
+            {sessionSummary && ((!parsedResume && selectedRole && selectedStyle) || (parsedResume && useResumeContext && selectedStyle)) && (
               <motion.section
                 initial={{ opacity: 0, y: 20, height: 0 }}
                 animate={{ opacity: 1, y: 0, height: 'auto' }}
@@ -492,7 +665,7 @@ const InterviewConfig = () => {
   );
 };
 
-// Updated Job Role Card Component - Now accepts dynamic props
+// Updated Job Role Card Component
 const JobRoleCard = ({ role, selected, onClick, getIconComponent }) => {
   return (
     <motion.div

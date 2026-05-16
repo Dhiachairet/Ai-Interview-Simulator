@@ -381,7 +381,6 @@ const navigationItems = getNavigationItems();
                   <div className="flex items-center gap-2 mb-2">
                     <ComputerDesktopIcon className="h-4 w-4 text-yellow-400" />
                     <h2 className="text-sm font-semibold">Model: GPT-4o Mini Cluster</h2>
-                    <span className="text-xs text-gray-500">(Fixed)</span>
                   </div>
                   <p className="text-xs text-gray-500">Provider: OpenAI • Fast, efficient, optimized for interviews</p>
                 </div>
