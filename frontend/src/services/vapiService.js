@@ -2,12 +2,11 @@ import Vapi from '@vapi-ai/web';
 
 // Your actual Assistant IDs from Vapi dashboard
 const ASSISTANT_IDS = {
-  'Strict Technical': '1262acb4-4ef5-4345-bbb2-e1084d72dc58',
-  'Friendly HR': '037d8b84-edc1-4359-b8ea-1aa0f38e9409',
-  'Stress Tester': '55c6ad9a-d936-4829-a013-f9989a357b73',
-  'Theoretical Expert': 'e60a2586-c610-43cb-85f0-b74e1c36970c'
+  'Strict Technical': 'f16da004-e405-4757-985e-edcc7d6e6cdd',
+  'Friendly HR': '76c56042-f377-43a5-b972-46930aad2ef8',
+  'Stress Tester': 'eb367fa4-9b4e-4a2c-b280-8e129607d170',
+  'Theoretical Expert': 'cb1b2e37-526a-468a-8d73-914b40743248'
 };
-
 class VapiInterviewService {
   constructor() {
     this.vapi = null;
@@ -106,177 +105,162 @@ class VapiInterviewService {
   }
 
   async startInterview(assistantPersonality, jobRole, difficulty = 'medium', resumeData = null) {
-    if (!this.isInitialized || !this.vapi) {
-      throw new Error('Vapi not initialized. Call initialize() first.');
-    }
-
-    const assistantId = ASSISTANT_IDS[assistantPersonality];
-    
-    if (!assistantId) {
-      throw new Error(`No assistant found for personality: ${assistantPersonality}`);
-    }
-
-    const userStr = localStorage.getItem('user');
-    const user = userStr ? JSON.parse(userStr) : null;
-    
-    console.log(`🎤 Starting interview with ${assistantPersonality} for ${jobRole}`);
-    console.log(`📄 Has resume context: ${!!resumeData}`);
-
-    // Build variable values - ALWAYS include jobRole and difficulty
-    const variableValues = {
-      jobRole: jobRole,
-      difficulty: difficulty,
-      personality: assistantPersonality
-    };
-    
-    // ✅ Add resume context variables if resume data is provided
-    if (resumeData && Object.keys(resumeData).length > 0) {
-      // Personal information
-      variableValues.candidateName = resumeData.name || 'the candidate';
-      variableValues.candidateEmail = resumeData.email || '';
-      variableValues.candidatePhone = resumeData.phone || '';
-      
-      // Skills
-      variableValues.candidateSkills = resumeData.skills?.length > 0 
-        ? resumeData.skills.join(', ') 
-        : '';
-      
-      // Experience - format nicely for the prompt
-      variableValues.candidateExperience = resumeData.experience?.length > 0
-        ? resumeData.experience.map(exp => {
-            let expText = `${exp.title} at ${exp.company}`;
-            if (exp.duration) expText += ` (${exp.duration})`;
-            if (exp.description) expText += `: ${exp.description}`;
-            return expText;
-          }).join('\n')
-        : '';
-      
-      // Projects
-      variableValues.candidateProjects = resumeData.projects?.length > 0
-        ? resumeData.projects.map(proj => {
-            let projText = `${proj.name}`;
-            if (proj.description) projText += `: ${proj.description}`;
-            if (proj.technologies?.length) projText += ` [${proj.technologies.join(', ')}]`;
-            return projText;
-          }).join('\n')
-        : '';
-      
-      // Education
-      variableValues.candidateEducation = resumeData.education?.length > 0
-        ? resumeData.education.map(edu => {
-            let eduText = `${edu.degree} at ${edu.institution}`;
-            if (edu.year) eduText += ` (${edu.year})`;
-            return eduText;
-          }).join('\n')
-        : '';
-      
-      // Certifications
-      variableValues.candidateCertifications = resumeData.certifications?.length > 0
-        ? resumeData.certifications.join(', ')
-        : '';
-      
-      // Languages
-      variableValues.candidateLanguages = resumeData.languages?.length > 0
-        ? resumeData.languages.join(', ')
-        : '';
-      
-      // Summary / Bio
-      variableValues.candidateSummary = resumeData.summary || '';
-      
-      // Years of experience
-      variableValues.yearsOfExperience = resumeData.yearsOfExperience || '';
-      
-      // Education level
-      variableValues.educationLevel = resumeData.educationLevel || '';
-      
-      console.log('📄 Resume context added:');
-      console.log(`   Name: ${variableValues.candidateName}`);
-      console.log(`   Skills: ${variableValues.candidateSkills?.substring(0, 100)}...`);
-      console.log(`   Experience: ${resumeData.experience?.length || 0} entries`);
-      console.log(`   Projects: ${resumeData.projects?.length || 0} entries`);
-    }
-
-    // Generate a TEMPORARY ID immediately (before Vapi responds)
-    const tempId = `temp_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    
-    // Save metadata with temp ID IMMEDIATELY
-    const callMetadata = {
-      vapiCallId: tempId,
-      jobRole: jobRole,
-      personality: assistantPersonality,
-      difficulty: difficulty,
-      startedAt: new Date().toISOString(),
-      isTemp: true,
-      hasResumeContext: !!resumeData
-    };
-    
-    // Save to BOTH storage types
-    sessionStorage.setItem('currentInterviewData', JSON.stringify(callMetadata));
-    localStorage.setItem(`interview_${tempId}`, JSON.stringify(callMetadata));
-    console.log('✅ Saved TEMPORARY metadata:', callMetadata);
-
-    try {
-      const result = await this.vapi.start(assistantId, {
-        variableValues: variableValues,
-        metadata: {
-          userId: user?.id,
-          jobRole: jobRole,
-          personality: assistantPersonality,
-          difficulty: difficulty,
-          hasResumeContext: !!resumeData,
-          resumeName: resumeData?.name || '',
-          resumeSkills: resumeData?.skills?.slice(0, 5) || []
-        }
-      });
-      
-      console.log('Vapi start result:', result);
-      
-      // Update metadata with REAL call ID
-      if (result && result.id) {
-        const realCallId = result.id;
-        this.currentVapiCallId = realCallId;
-        
-        // Update metadata with real ID
-        const updatedMetadata = {
-          vapiCallId: realCallId,
-          jobRole: jobRole,
-          personality: assistantPersonality,
-          difficulty: difficulty,
-          startedAt: new Date().toISOString(),
-          isTemp: false,
-          hasResumeContext: !!resumeData
-        };
-        
-        // Save updated metadata
-        sessionStorage.setItem('currentInterviewData', JSON.stringify(updatedMetadata));
-        localStorage.setItem(`interview_${realCallId}`, JSON.stringify(updatedMetadata));
-        
-        // Clean up temp entry
-        localStorage.removeItem(`interview_${tempId}`);
-        
-        console.log('✅ Updated metadata with REAL call ID:', realCallId);
-      }
-      
-      this.currentCall = {
-        assistantId,
-        personality: assistantPersonality,
-        jobRole,
-        difficulty,
-        startedAt: new Date(),
-        vapiCallId: result?.id || null,
-        hasResumeContext: !!resumeData
-      };
-      
-      return { 
-        success: true, 
-        callId: result?.id,
-        message: `Interview started with ${assistantPersonality} interviewer for ${jobRole}`
-      };
-    } catch (error) {
-      console.error('Failed to start interview:', error);
-      throw error;
-    }
+  if (!this.isInitialized || !this.vapi) {
+    throw new Error('Vapi not initialized. Call initialize() first.');
   }
+
+  const assistantId = ASSISTANT_IDS[assistantPersonality];
+  
+  if (!assistantId) {
+    throw new Error(`No assistant found for personality: ${assistantPersonality}`);
+  }
+
+  const userStr = localStorage.getItem('user');
+  const user = userStr ? JSON.parse(userStr) : null;
+  
+  console.log(`🎤 Starting interview with ${assistantPersonality} for ${jobRole}`);
+  console.log(`📄 Has resume context: ${!!resumeData}`);
+
+  // ✅ Build variable values - clean and simple
+  const variableValues = {
+    jobRole: jobRole,
+    difficulty: difficulty,
+  };
+  
+  // ✅ Only add resume data if it exists AND has content
+  const hasValidResume = resumeData && Object.keys(resumeData).length > 0 && resumeData.name;
+  variableValues.hasResume = hasValidResume ? 'true' : 'false';
+  
+  if (hasValidResume) {
+    // Personal info
+    variableValues.candidateName = resumeData.name || 'the candidate';
+    
+    // ✅ SINGLE random skill (not all skills)
+    const skills = resumeData.skills || [];
+    const randomSkill = skills.length > 0 
+      ? skills[Math.floor(Math.random() * skills.length)]
+      : '';
+    variableValues.relevantSkill = randomSkill;
+    
+    // ✅ Top 2 skills as a short phrase
+    variableValues.candidateSkills = skills.slice(0, 2).join(', ');
+    
+    // ✅ Years of experience
+    variableValues.yearsOfExperience = resumeData.yearsOfExperience || '';
+    
+    // ✅ Single primary project
+    const projects = resumeData.projects || [];
+    if (projects.length > 0) {
+      const primaryProject = projects[0];
+      variableValues.primaryProject = primaryProject.name;
+      variableValues.projectTech = primaryProject.technologies?.slice(0, 2).join(', ') || '';
+    } else {
+      variableValues.primaryProject = '';
+      variableValues.projectTech = '';
+    }
+    
+    // ✅ Single primary experience
+    const experience = resumeData.experience || [];
+    if (experience.length > 0) {
+      const primaryExp = experience[0];
+      variableValues.primaryRole = primaryExp.title;
+      variableValues.primaryCompany = primaryExp.company;
+    } else {
+      variableValues.primaryRole = '';
+      variableValues.primaryCompany = '';
+    }
+    
+    console.log('📄 Resume data (FIXED):');
+    console.log(`   Name: ${variableValues.candidateName}`);
+    console.log(`   Single skill: ${variableValues.relevantSkill}`);
+    console.log(`   Years: ${variableValues.yearsOfExperience}`);
+  } else {
+    // ✅ No resume - set empty defaults
+    variableValues.candidateName = 'the candidate';
+    variableValues.relevantSkill = '';
+    variableValues.candidateSkills = '';
+    variableValues.yearsOfExperience = '';
+    variableValues.primaryProject = '';
+    variableValues.projectTech = '';
+    variableValues.primaryRole = '';
+    variableValues.primaryCompany = '';
+    
+    console.log('📄 No resume data - using defaults');
+  }
+
+  // Generate temp ID and save metadata
+  const tempId = `temp_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+  
+  const callMetadata = {
+    vapiCallId: tempId,
+    jobRole: jobRole,
+    personality: assistantPersonality,
+    difficulty: difficulty,
+    startedAt: new Date().toISOString(),
+    isTemp: true,
+    hasResumeContext: hasValidResume
+  };
+  
+  sessionStorage.setItem('currentInterviewData', JSON.stringify(callMetadata));
+  localStorage.setItem(`interview_${tempId}`, JSON.stringify(callMetadata));
+  console.log('✅ Saved temporary metadata');
+
+  try {
+    const result = await this.vapi.start(assistantId, {
+      variableValues: variableValues,
+      metadata: {
+        userId: user?.id,
+        jobRole: jobRole,
+        personality: assistantPersonality,
+        difficulty: difficulty,
+        hasResumeContext: hasValidResume,
+        resumeName: hasValidResume ? resumeData.name : ''
+      }
+    });
+    
+    console.log('Vapi start result:', result);
+    
+    if (result && result.id) {
+      const realCallId = result.id;
+      this.currentVapiCallId = realCallId;
+      
+      const updatedMetadata = {
+        vapiCallId: realCallId,
+        jobRole: jobRole,
+        personality: assistantPersonality,
+        difficulty: difficulty,
+        startedAt: new Date().toISOString(),
+        isTemp: false,
+        hasResumeContext: hasValidResume
+      };
+      
+      sessionStorage.setItem('currentInterviewData', JSON.stringify(updatedMetadata));
+      localStorage.setItem(`interview_${realCallId}`, JSON.stringify(updatedMetadata));
+      localStorage.removeItem(`interview_${tempId}`);
+      
+      console.log('✅ Updated with real call ID:', realCallId);
+    }
+    
+    this.currentCall = {
+      assistantId,
+      personality: assistantPersonality,
+      jobRole,
+      difficulty,
+      startedAt: new Date(),
+      vapiCallId: result?.id || null,
+      hasResumeContext: hasValidResume
+    };
+    
+    return { 
+      success: true, 
+      callId: result?.id,
+      message: `Interview started with ${assistantPersonality} interviewer for ${jobRole}`
+    };
+  } catch (error) {
+    console.error('Failed to start interview:', error);
+    throw error;
+  }
+}
 
   stopInterview() {
     if (this.vapi && this.isCallActive) {
