@@ -1,43 +1,48 @@
 # AI Interview Simulator 🎙️
 
-An AI-powered interview simulation platform that helps candidates prepare for real interviews through realistic, personality-driven interview sessions — built with the MERN stack, Gemini AI, and Vapi AI.
+An intelligent interview preparation platform that puts you in a real interview scenario — powered by Gemini AI and Vapi AI voice technology.
 
 ## What is it?
 
-Most interview prep tools give you a list of questions. This one puts you in an actual interview.
+Most interview prep tools give you a list of questions. This one actually interviews you.
 
-Choose your interviewer, answer out loud or in text, and get evaluated on your responses in real time. Four distinct AI interviewer personalities, each designed to simulate a different type of interview you'll face in the real world.
+Pick a job title or upload your CV, choose your interviewer, and get put through a full voice-based interview session. When it's over, Gemini AI breaks down your performance with detailed feedback so you know exactly what to improve.
 
-## Interviewer Personalities
+## Interviewers
 
-| Personality | Style |
+Four distinct personalities, each designed to simulate a different real-world interview scenario:
+
+| Interviewer | Style |
 |-------------|-------|
-| 🤝 **Friendly HR** | Warm, conversational — focuses on soft skills, culture fit, and your story |
-| ⚡ **Strict Technical** | No small talk — deep dives into your technical knowledge and code reasoning |
-| 🔥 **Stress Tester** | Interrupts, challenges, pushes back — tests how you perform under pressure |
-| 📚 **Theoretical Expert** | Academic and precise — probes your understanding of CS fundamentals and concepts |
+| 🤝 **Friendly HR** | Warm and conversational, focuses on culture fit and soft skills |
+| 🔬 **Strict Technical** | No small talk, deep dives into your technical knowledge |
+| 🔥 **Stress Tester** | Interrupts, challenges your answers, tests how you handle pressure |
+| 📚 **Theoretical Expert** | Heavy on concepts, algorithms, and academic depth |
 
-## Features
-- Voice-based interviews powered by Vapi AI
-- Real-time response evaluation powered by Google Gemini
-- 4 distinct interviewer personalities with unique behavior and tone
-- Post-interview feedback and scoring
-- Full MERN stack with clean REST API
+## Key Features
+
+- 🎤 **Voice-based interviews** powered by Vapi AI — speak your answers, not type them
+- 📄 **CV-tailored interviews** — upload your resume and the questions adapt to your background
+- 🔍 **Job title mode** — pick any role and get interviewed for it on the spot
+- 🧠 **AI-powered feedback** — Gemini evaluates your answers and gives a detailed performance breakdown
+- 👥 **4 interviewer personalities** — each one tests something different
 
 ## Tech Stack
+
 - **Frontend:** React.js
 - **Backend:** Node.js, Express.js
 - **Database:** MongoDB
-- **Voice AI:** Vapi AI
-- **Evaluation AI:** Google Gemini API
+- **AI Evaluation:** Google Gemini API
+- **Voice Engine:** Vapi AI
+- **Full Stack:** MERN
 
 ## Getting Started
 
 ### Prerequisites
 - Node.js 18+
 - MongoDB
-- Vapi AI account & API key
-- Google Gemini API key
+- Gemini API key — [get one here](https://makersuite.google.com/app/apikey)
+- Vapi AI account — [sign up here](https://vapi.ai)
 
 ### Setup — Backend
 1. Clone the repo
