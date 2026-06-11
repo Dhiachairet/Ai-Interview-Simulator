@@ -73,7 +73,9 @@ const AdminUsers = () => {
       setLoading(true);
       const response = await adminService.listUsers({ q: search, role: roleFilter });
       if (response.success) {
-        setUsers(response.data || []);
+        // Filter out admin users from the list
+        const filteredUsers = (response.data || []).filter(u => u.role !== 'admin');
+        setUsers(filteredUsers);
         setError(null);
       } else {
         setError('Failed to load users');
