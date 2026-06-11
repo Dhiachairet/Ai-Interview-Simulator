@@ -27,10 +27,12 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Clear token and redirect to login if unauthorized
+      // Just clear token and user - let the component handle redirect
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      
+      // Dispatch a custom event so components can react
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
     }
     return Promise.reject(error);
   }

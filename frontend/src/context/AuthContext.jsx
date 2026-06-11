@@ -17,7 +17,6 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check if user is already logged in
     const initAuth = async () => {
       const token = authService.getToken();
       const storedUser = authService.getCurrentUser();
@@ -31,6 +30,48 @@ export const AuthProvider = ({ children }) => {
 
     initAuth();
   }, []);
+
+  // ✅ Add unauthorized event listener
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      console.log('🔄 Unauthorized event received - clearing session');
+      setUser(null);
+      // Don't auto-redirect here, let the component decide
+      // But we want to redirect to login for non-public routes
+      const publicRoutes = ['/login', '/register', '/'];
+      const currentPath = window.location.pathname;
+      
+      if (!publicRoutes.includes(currentPath) && !currentPath.startsWith('/admin')) {
+        // Only redirect if not already on a public route
+        window.location.href = '/login';
+      }
+    };
+
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
+  }, []);
+
+  // ✅ Add keep-alive ping for admin users
+  useEffect(() => {
+    if (!user || user.role !== 'admin') return;
+    
+    // Ping the server every 4 minutes to keep session alive
+    const keepAlive = setInterval(async () => {
+      try {
+        await api.get('/api/auth/me');
+        console.log('💓 Session keep-alive ping successful');
+      } catch (error) {
+        console.log('💀 Session expired, clearing...');
+        if (error.response?.status === 401) {
+          clearInterval(keepAlive);
+          setUser(null);
+          window.location.href = '/login';
+        }
+      }
+    }, 4 * 60 * 1000); // Every 4 minutes
+    
+    return () => clearInterval(keepAlive);
+  }, [user]);
 
   const login = async (credentials) => {
     try {
@@ -102,7 +143,7 @@ export const AuthProvider = ({ children }) => {
     login,
     register,
     logout,
-    updateUser,  // ← Add this
+    updateUser,
     handleGoogleCallback,
     isAuthenticated: !!user,
     loading,
