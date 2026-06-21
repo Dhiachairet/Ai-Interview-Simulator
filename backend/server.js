@@ -4,6 +4,21 @@ const cookieParser = require('cookie-parser');
 require('dotenv').config();
 const connectDB = require('./config/db');
 
+// Validate environment configuration. Missing REQUIRED vars are logged as
+// errors; missing OPTIONAL vars only warn so the app never crashes on startup.
+const REQUIRED_ENV = ['MONGO_URI', 'JWT_SECRET'];
+const OPTIONAL_ENV = [
+  'FRONTEND_URL', 'GEMINI_API_KEY', 'VAPI_PRIVATE_KEY', 'ELEVENLABS_API_KEY',
+  'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_CALLBACK_URL',
+  'CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'
+];
+REQUIRED_ENV.forEach((key) => {
+  if (!process.env[key]) console.error(`❌ Missing REQUIRED environment variable: ${key}`);
+});
+OPTIONAL_ENV.forEach((key) => {
+  if (!process.env[key]) console.warn(`⚠️  Optional environment variable not set: ${key} — related features may be unavailable.`);
+});
+
 // Connect to MongoDB
 connectDB();
 

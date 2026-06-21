@@ -10,6 +10,10 @@ const resumeSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  fileUrl: {
+    type: String,
+    default: ''
+  },
   extractedText: {
     type: String,
     required: true

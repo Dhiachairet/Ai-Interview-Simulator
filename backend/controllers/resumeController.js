@@ -1,5 +1,6 @@
 const Resume = require('../models/Resume');
 const { extractTextFromFile, parseResumeWithGemini } = require('../services/resumeParser');
+const { uploadBufferToCloudinary, isConfigured } = require('../config/cloudinary');
 const multer = require('multer');
 
 // Configure multer for memory storage
@@ -53,25 +54,43 @@ const uploadResume = async (req, res) => {
       console.log('   Skills:', parsedData.skills.length);
       console.log('   Experience:', parsedData.experience.length);
       
+      // Upload the original file to Cloudinary (optional — skipped gracefully
+      // if Cloudinary is not configured; resume parsing still works either way)
+      let fileUrl = '';
+      try {
+        if (isConfigured()) {
+          fileUrl = (await uploadBufferToCloudinary(req.file.buffer, {
+            folder: 'resumes',
+            filename: req.file.originalname
+          })) || '';
+        } else {
+          console.warn('⚠️  Cloudinary not configured — resume parsed but original file not stored.');
+        }
+      } catch (uploadErr) {
+        console.warn('⚠️  Cloudinary upload failed (continuing without file URL):', uploadErr.message);
+      }
+
       // Save to database
       const resume = await Resume.findOneAndUpdate(
         { user: req.user.id },
         {
           user: req.user.id,
           fileName: req.file.originalname,
+          fileUrl: fileUrl,
           extractedText: extractedText.substring(0, 5000),
           parsedData: parsedData,
           isActive: true
         },
         { upsert: true, new: true }
       );
-      
+
       res.status(200).json({
         success: true,
         data: {
           id: resume._id,
           parsedData: resume.parsedData,
-          fileName: resume.fileName
+          fileName: resume.fileName,
+          fileUrl: resume.fileUrl
         }
       });
     });
