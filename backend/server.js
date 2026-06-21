@@ -24,9 +24,26 @@ connectDB();
 
 const app = express();
 
+// Allowed CORS origins: a comma-separated FRONTEND_URL list plus this project's
+// Vercel deployments (preview + production URLs change on every deploy).
+const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true; // non-browser clients (curl, server-to-server, health checks)
+  if (allowedOrigins.includes(origin)) return true;
+  if (/^https:\/\/ai-interview-simulator[\w-]*\.vercel\.app$/.test(origin)) return true;
+  return false;
+};
+
 // Middleware
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    if (isAllowedOrigin(origin)) return callback(null, true);
+    return callback(new Error(`Origin ${origin} not allowed by CORS`));
+  },
   credentials: true
 }));
 app.use(express.json());
