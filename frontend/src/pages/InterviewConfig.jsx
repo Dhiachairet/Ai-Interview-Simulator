@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useToast } from '../context/DialogProvider';
+import MobileNav from '../components/MobileNav';
 import api from '../services/api';
 import { 
   HomeIcon,
@@ -38,6 +40,7 @@ const PERSONALITY_MAP = {
 
 const InterviewConfig = () => {
   const navigate = useNavigate();
+  const toast = useToast();
   const { user, logout } = useAuth();
   const [selectedRole, setSelectedRole] = useState(null);
   const [selectedStyle, setSelectedStyle] = useState(null);
@@ -117,7 +120,7 @@ const InterviewConfig = () => {
       }
     } catch (error) {
       console.error('Upload failed:', error);
-      alert(error.response?.data?.error || 'Failed to upload resume');
+      toast.error(error.response?.data?.error || 'Failed to upload resume');
     } finally {
       setUploadingResume(false);
     }
@@ -271,12 +274,12 @@ const InterviewConfig = () => {
   const handleBeginInterview = async () => {
     // Validate: either resume mode with context OR selected role
     if (!resumeMode && !selectedRole) {
-      alert('Please either select a job role or upload a resume');
+      toast.warning('Please either select a job role or upload a resume');
       return;
     }
     
     if (!selectedStyle) {
-      alert('Please select an interviewer style');
+      toast.warning('Please select an interviewer style');
       return;
     }
     
@@ -371,11 +374,19 @@ const InterviewConfig = () => {
       </div>
 
       {/* Left Sidebar */}
+      <MobileNav
+        items={navigationItems}
+        user={user}
+        onLogout={handleLogout}
+        headerIcon={<BriefcaseIcon className="h-6 w-6 text-white" />}
+        headerTitle="AI Interview Pro"
+      />
+
       <motion.aside
         initial={{ x: -300 }}
         animate={{ x: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-64 border-r border-white/10 bg-white/5 backdrop-blur-xl flex flex-col relative z-10 flex-shrink-0"
+        className="hidden md:flex w-64 border-r border-white/10 bg-white/5 backdrop-blur-xl flex-col relative z-10 flex-shrink-0"
       >
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center space-x-3">
@@ -433,7 +444,7 @@ const InterviewConfig = () => {
       </motion.aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto relative z-10">
+      <main className="flex-1 overflow-y-auto relative z-10 pt-14 md:pt-0">
         <div className="max-w-6xl mx-auto p-8">
           {/* Header */}
           <motion.div
@@ -770,7 +781,7 @@ const DifficultySelector = ({ selected, onChange }) => {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => onChange(difficulty.id)}
-            className={`relative py-4 px-6 rounded-xl font-semibold transition-all duration-300 ${
+            className={`relative py-4 px-3 sm:px-6 rounded-xl font-semibold transition-all duration-300 ${
               selected === difficulty.id
                 ? `bg-gradient-to-r ${difficulty.color} text-white shadow-xl`
                 : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'

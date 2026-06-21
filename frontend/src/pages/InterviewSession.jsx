@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import interviewService from '../services/interviewService';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useConfirm } from '../context/DialogProvider';
 import { 
   CpuChipIcon,
   VideoCameraIcon,
@@ -362,6 +363,7 @@ const AvatarParticle = ({ delay, size, x, y }) => (
 
 const InterviewSession = () => {
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const location = useLocation();
   const chatEndRef = useRef(null);
   
@@ -742,8 +744,8 @@ const InterviewSession = () => {
     }
   };
 
-  const handleEndInterview = () => {
-    if (window.confirm('Are you sure you want to end this interview? Your progress will be saved.')) {
+  const handleEndInterview = async () => {
+    if (await confirm({ title: 'End interview?', message: 'Your progress will be saved.', confirmText: 'End interview', tone: 'danger' })) {
       stopSpeaking();
       navigate('/history');
     }
@@ -828,9 +830,9 @@ const InterviewSession = () => {
       {/* Main Area */}
       <div className="flex h-[calc(100vh-48px)]">
         {/* Interview Area */}
-        <div className={`flex-1 flex flex-col p-6 transition-all duration-300 ${showChat ? 'mr-[340px]' : ''}`}>
+        <div className={`flex-1 flex flex-col p-4 sm:p-6 transition-all duration-300 ${showChat ? 'md:mr-[340px]' : ''}`}>
           {/* Video Grid */}
-          <div className="grid grid-cols-2 gap-4 flex-1 min-h-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1 min-h-0">
             {/* AI Interviewer Card */}
             <motion.div
               className="rounded-2xl p-6 relative overflow-hidden"
@@ -1072,7 +1074,7 @@ const InterviewSession = () => {
         <AnimatePresence>
           {showChat && (
             <motion.div
-              className="fixed right-0 top-12 h-[calc(100vh-48px)] w-[340px] border-l flex flex-col"
+              className="fixed right-0 top-12 h-[calc(100vh-48px)] w-full md:w-[340px] border-l flex flex-col"
               style={{
                 backgroundColor: 'hsl(222 25% 10%)',
                 borderColor: 'hsl(222 20% 15%)'

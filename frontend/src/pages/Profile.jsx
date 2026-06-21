@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import MobileNav from '../components/MobileNav';
 import { useNavigate } from 'react-router-dom';
 import { 
   HomeIcon,
@@ -183,11 +184,19 @@ const Profile = () => {
       </div>
 
       {/* Left Sidebar */}
+      <MobileNav
+        items={navigationItems}
+        user={user}
+        onLogout={handleLogout}
+        headerIcon={user?.role === 'admin' ? <ShieldCheckIcon className="h-6 w-6 text-white" /> : <BriefcaseIcon className="h-6 w-6 text-white" />}
+        headerTitle={user?.role === 'admin' ? 'Admin Portal' : 'AI Interview Pro'}
+      />
+
       <motion.aside
         initial={{ x: -300 }}
         animate={{ x: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-64 border-r border-white/10 bg-white/5 backdrop-blur-xl flex flex-col relative z-10 flex-shrink-0"
+        className="hidden md:flex w-64 border-r border-white/10 bg-white/5 backdrop-blur-xl flex-col relative z-10 flex-shrink-0"
       >
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center space-x-3">
@@ -255,7 +264,7 @@ const Profile = () => {
       </motion.aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto relative z-10">
+      <main className="flex-1 overflow-y-auto relative z-10 pt-14 md:pt-0">
         <div className="max-w-4xl mx-auto p-8">
           {/* Header */}
           <motion.div

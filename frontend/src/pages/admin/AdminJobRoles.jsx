@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useConfirm } from '../../context/DialogProvider';
+import MobileNav from '../../components/MobileNav';
 import { useNavigate } from 'react-router-dom';
 import { 
   UserGroupIcon, ShieldCheckIcon, MagnifyingGlassIcon, PlusIcon,
@@ -12,6 +14,7 @@ import { iconComponents, AVAILABLE_ICONS } from '../../constants/iconMap';
 
 const AdminJobRoles = () => {
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const { user, logout } = useAuth();
   const [jobRoles, setJobRoles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -112,7 +115,7 @@ await api.post('/api/admin/job-roles', formData);  // Same, no change
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this job role? This will affect existing interviews.')) return;
+    if (!(await confirm({ title: 'Delete job role?', message: 'This will affect existing interviews.', confirmText: 'Delete', tone: 'danger' }))) return;
     
     setDeletingId(id);
     try {
@@ -156,11 +159,19 @@ await api.post('/api/admin/job-roles', formData);  // Same, no change
       </div>
 
       {/* Sidebar */}
+      <MobileNav
+        items={navigationItems}
+        user={user}
+        onLogout={handleLogout}
+        headerIcon={<ShieldCheckIcon className="h-6 w-6 text-white" />}
+        headerTitle="Admin Console"
+      />
+
       <motion.aside
         initial={{ x: -300 }}
         animate={{ x: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-64 border-r border-white/10 bg-white/5 backdrop-blur-xl flex flex-col relative z-10 flex-shrink-0"
+        className="hidden md:flex w-64 border-r border-white/10 bg-white/5 backdrop-blur-xl flex-col relative z-10 flex-shrink-0"
       >
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center space-x-3">
@@ -218,7 +229,7 @@ await api.post('/api/admin/job-roles', formData);  // Same, no change
       </motion.aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto relative z-10">
+      <main className="flex-1 overflow-y-auto relative z-10 pt-14 md:pt-0">
         <div className="max-w-6xl mx-auto px-6 py-10">
           <div className="flex justify-between items-center mb-8">
             <div>

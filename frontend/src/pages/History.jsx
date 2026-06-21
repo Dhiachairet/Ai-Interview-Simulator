@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useConfirm, useToast } from '../context/DialogProvider';
+import MobileNav from '../components/MobileNav';
 import { useNavigate } from 'react-router-dom';
 import { 
   HomeIcon,
@@ -27,6 +29,8 @@ import api from '../services/api';
 
 const History = () => {
   const navigate = useNavigate();
+  const confirm = useConfirm();
+  const toast = useToast();
   const { user, logout } = useAuth();
   const [interviews, setInterviews] = useState([]);
   const [filteredInterviews, setFilteredInterviews] = useState([]);
@@ -214,14 +218,14 @@ const History = () => {
 
   const handleDeleteInterview = async (interviewId, e) => {
     e.stopPropagation();
-    if (window.confirm('Are you sure you want to delete this interview? This action cannot be undone.')) {
+    if (await confirm({ title: 'Delete interview?', message: 'This action cannot be undone.', confirmText: 'Delete', tone: 'danger' })) {
       setDeletingId(interviewId);
       try {
         await api.delete(`/api/interview/${interviewId}`);
         await fetchHistory();
       } catch (error) {
         console.error('Error deleting interview:', error);
-        alert('Failed to delete interview');
+        toast.error('Failed to delete interview');
       } finally {
         setDeletingId(null);
       }
@@ -277,11 +281,19 @@ const History = () => {
       </div>
 
       {/* Left Sidebar */}
+      <MobileNav
+        items={navigationItems}
+        user={user}
+        onLogout={handleLogout}
+        headerIcon={<BriefcaseIcon className="h-6 w-6 text-white" />}
+        headerTitle="AI Interview Pro"
+      />
+
       <motion.aside
         initial={{ x: -300 }}
         animate={{ x: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-64 border-r border-white/10 bg-white/5 backdrop-blur-xl flex flex-col relative z-10 flex-shrink-0"
+        className="hidden md:flex w-64 border-r border-white/10 bg-white/5 backdrop-blur-xl flex-col relative z-10 flex-shrink-0"
       >
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center space-x-3">
@@ -345,7 +357,7 @@ const History = () => {
       </motion.aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto relative z-10">
+      <main className="flex-1 overflow-y-auto relative z-10 pt-14 md:pt-0">
         <div className="max-w-6xl mx-auto p-8">
           {/* Header */}
           <motion.div

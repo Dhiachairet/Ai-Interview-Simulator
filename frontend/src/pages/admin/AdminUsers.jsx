@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useConfirm } from '../../context/DialogProvider';
+import MobileNav from '../../components/MobileNav';
 import { 
   UserGroupIcon,
   ShieldCheckIcon,
@@ -31,6 +33,7 @@ const emptyForm = {
 
 const AdminUsers = () => {
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const { user, logout } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -143,7 +146,7 @@ const AdminUsers = () => {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this user? This action cannot be undone.')) {
+    if (!(await confirm({ title: 'Delete user?', message: 'This action cannot be undone.', confirmText: 'Delete', tone: 'danger' }))) {
       return;
     }
     try {
@@ -199,11 +202,19 @@ const AdminUsers = () => {
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-pink-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-4000"></div>
       </div>
 
+      <MobileNav
+        items={navigationItems}
+        user={user}
+        onLogout={handleLogout}
+        headerIcon={<ShieldCheckIcon className="h-6 w-6 text-white" />}
+        headerTitle="Admin Console"
+      />
+
       <motion.aside
         initial={{ x: -300 }}
         animate={{ x: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-64 border-r border-white/10 bg-white/5 backdrop-blur-xl flex flex-col relative z-10 flex-shrink-0"
+        className="hidden md:flex w-64 border-r border-white/10 bg-white/5 backdrop-blur-xl flex-col relative z-10 flex-shrink-0"
       >
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center space-x-3">
@@ -267,7 +278,7 @@ const AdminUsers = () => {
       </motion.aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto relative z-10">
+      <main className="flex-1 overflow-y-auto relative z-10 pt-14 md:pt-0">
         <div className="max-w-6xl mx-auto px-6 py-10">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
             <div>
@@ -356,7 +367,7 @@ const AdminUsers = () => {
             )}
 
             <div className="mt-6 overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[640px] text-sm">
                 <thead>
                   <tr className="text-left text-gray-400 border-b border-white/10">
                     <th className="pb-3 font-medium">User</th>

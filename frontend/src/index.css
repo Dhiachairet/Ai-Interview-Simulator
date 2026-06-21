@@ -8,7 +8,7 @@
   }
   
   body {
-    @apply bg-[#0A0F1E];
+    @apply bg-[#0A0F1E] overflow-x-hidden;
   }
 }
 

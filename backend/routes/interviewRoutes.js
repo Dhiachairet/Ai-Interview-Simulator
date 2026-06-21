@@ -268,6 +268,12 @@ router.post('/save-vapi-call', protect, async (req, res) => {
     try {
       // ✅ NEW: Call Gemini to evaluate the full interview
       console.log(`🤖 Calling Gemini to evaluate interview...`);
+      
+      // ✅ DEBUG: Log the transcript to see what Gemini will analyze
+      console.log(`📄 TRANSCRIPT FOR GEMINI (first 1000 chars):\n${transcript.substring(0, 1000)}`);
+      console.log(`📄 TRANSCRIPT LENGTH: ${transcript.length} characters`);
+      console.log(`📄 HAS USER ANSWERS: ${transcript.includes('User:') || transcript.includes('Candidate:') ? 'YES' : 'NO'}`);
+      
       const geminiEvaluation = await evaluateVapiInterview(transcript, jobRole, difficulty);
       console.log(`✅ Gemini evaluation completed:`, {
         overallScore: geminiEvaluation.overallScore,

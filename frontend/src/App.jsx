@@ -9,6 +9,7 @@ import InterviewReport from './pages/InterviewReport'
 import CharacterTest from './pages/CharacterTest'
 import SimpleCharacterTest from './pages/SimpleCharacterTest'
 import { AuthProvider } from './context/AuthContext'
+import { DialogProvider } from './context/DialogProvider'
 import History from './pages/History';
 import VapiCallSession from './pages/VapiCallSession';
 import { useAuth } from './context/AuthContext';
@@ -44,6 +45,7 @@ const AdminRoute = ({ children }) => {
 function App() {
   return (
     <AuthProvider>
+      <DialogProvider>
       <Router>
         <Routes>
           {/* Public Routes */}
@@ -107,6 +109,7 @@ function App() {
         />
         </Routes>
       </Router>
+      </DialogProvider>
     </AuthProvider>
   )
 }

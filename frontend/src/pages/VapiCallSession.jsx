@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useConfirm } from '../context/DialogProvider';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   PhoneIcon,
@@ -21,6 +22,7 @@ import api from '../services/api';
 
 const VapiCallSession = () => {
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const location = useLocation();
   const chatEndRef = useRef(null);
   
@@ -244,7 +246,7 @@ const handleMessage = (msg) => {
       return;
     }
     
-    if (window.confirm('Are you sure you want to end this interview?')) {
+    if (await confirm({ title: 'End interview?', message: 'Are you sure you want to end this interview?', confirmText: 'End interview', tone: 'danger' })) {
       isSavingRef.current = true;
       
       let currentCallId = vapiService.getCurrentVapiCallId();
@@ -293,9 +295,9 @@ const handleMessage = (msg) => {
     }
   };
   
-  const handleGoBack = () => {
+  const handleGoBack = async () => {
     if (callStatus === 'active') {
-      if (window.confirm('Ending this interview will save your progress. Continue?')) {
+      if (await confirm({ title: 'Leave interview?', message: 'Ending this interview will save your progress. Continue?', confirmText: 'End & leave', tone: 'danger' })) {
         vapiService.stopInterview();
         navigate('/history');
       }
@@ -334,26 +336,26 @@ const handleMessage = (msg) => {
   return (
     <div className="fixed inset-0 bg-[#0A0F1E] text-white flex flex-col overflow-hidden">
       {/* Top Bar */}
-      <div className="h-12 border-b flex items-center px-6" style={{ borderColor: 'hsl(222 20% 15%)' }}>
-        <div className="flex items-center gap-3">
+      <div className="h-12 border-b flex items-center px-3 sm:px-6" style={{ borderColor: 'hsl(222 20% 15%)' }}>
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
             onClick={handleGoBack}
-            className="w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 hover:opacity-70"
+            className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center transition-all duration-200 hover:opacity-70"
             style={{ backgroundColor: 'hsl(222 25% 10%)', color: 'hsl(222 10% 60%)' }}
           >
             <ChevronLeftIcon className="w-5 h-5" />
           </button>
-          <div>
-            <h1 className="text-sm font-medium" style={{ color: 'hsl(0 0% 100%)' }}>
+          <div className="min-w-0">
+            <h1 className="text-sm font-medium truncate" style={{ color: 'hsl(0 0% 100%)' }}>
               {sessionDetails.jobRole} Interview
             </h1>
-            <p className="text-xs" style={{ color: 'hsl(222 10% 50%)' }}>
+            <p className="text-xs truncate" style={{ color: 'hsl(222 10% 50%)' }}>
               {sessionDetails.personality} • {sessionDetails.difficulty}
             </p>
           </div>
         </div>
-        
-        <div className="ml-auto flex items-center gap-4">
+
+        <div className="ml-auto flex items-center gap-2 sm:gap-4 shrink-0 pl-2">
           <div className={`px-3 py-1 rounded-full text-xs font-medium ${status.bg} ${status.color}`}>
             {status.text}
           </div>
@@ -367,9 +369,9 @@ const handleMessage = (msg) => {
       </div>
       
       {/* Main Content */}
-      <div className="flex-1 flex items-center justify-center p-8">
+      <div className="flex-1 overflow-y-auto flex items-center justify-center p-4 sm:p-8">
         <div className="max-w-4xl w-full">
-          <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8 mb-6">
+          <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5 sm:p-8 mb-6">
             <div className="text-center mb-6">
               <div className="inline-flex p-4 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 mb-4">
                 <UserCircleIcon className="h-12 w-12 text-white" />
@@ -465,7 +467,7 @@ const handleMessage = (msg) => {
       <AnimatePresence>
         {showChat && callStatus === 'active' && (
           <motion.div
-            className="fixed right-0 top-12 h-[calc(100vh-48px)] w-[400px] border-l flex flex-col"
+            className="fixed right-0 top-12 h-[calc(100vh-48px)] w-full sm:w-[400px] border-l flex flex-col"
             style={{ backgroundColor: 'hsl(222 25% 10%)', borderColor: 'hsl(222 20% 15%)' }}
             initial={{ x: 400 }}
             animate={{ x: 0 }}

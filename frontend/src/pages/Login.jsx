@@ -120,7 +120,7 @@ const Login = () => {
         initial={{ opacity: 0, x: -20 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.5 }}
-        className="absolute top-8 left-8"
+        className="absolute top-4 left-4 sm:top-8 sm:left-8 z-10"
       >
         <Link to="/" className="flex items-center text-gray-400 hover:text-white transition group">
           <ArrowLeftIcon className="h-5 w-5 mr-2 group-hover:-translate-x-1 transition-transform" />
@@ -137,7 +137,7 @@ const Login = () => {
       >
         <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-purple-600 rounded-3xl blur-xl opacity-20"></div>
         
-        <div className="relative bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl">
+        <div className="relative bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl">
           {/* Logo */}
           <motion.div 
             initial={{ scale: 0 }}

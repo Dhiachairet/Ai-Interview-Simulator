@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import MobileNav from '../../components/MobileNav';
 import { useNavigate } from 'react-router-dom';
 import { 
   MicrophoneIcon, 
@@ -187,11 +188,19 @@ const navigationItems = getNavigationItems();
       </div>
 
       {/* Left Sidebar */}
+      <MobileNav
+        items={navigationItems}
+        user={user}
+        onLogout={handleLogout}
+        headerIcon={<BriefcaseIcon className="h-6 w-6 text-white" />}
+        headerTitle="AI Interview Pro"
+      />
+
       <motion.aside
         initial={{ x: -300 }}
         animate={{ x: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-64 border-r border-white/10 bg-white/5 backdrop-blur-xl flex flex-col relative z-10 flex-shrink-0"
+        className="hidden md:flex w-64 border-r border-white/10 bg-white/5 backdrop-blur-xl flex-col relative z-10 flex-shrink-0"
       >
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center space-x-3">
@@ -255,7 +264,7 @@ const navigationItems = getNavigationItems();
       </motion.aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto relative z-10">
+      <main className="flex-1 overflow-y-auto relative z-10 pt-14 md:pt-0">
         <div className="max-w-6xl mx-auto p-6">
           {/* Header */}
           <motion.div
@@ -336,7 +345,7 @@ const navigationItems = getNavigationItems();
             {selectedAssistant ? (
               <div className="lg:col-span-3 space-y-4">
                 {/* Basic Info Row - Name + Voice side by side */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-4">
                     <label className="block text-xs font-medium text-gray-400 mb-1">
                       Assistant Name

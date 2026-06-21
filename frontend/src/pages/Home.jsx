@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import MobileNav from '../components/MobileNav';
 import { 
   MicrophoneIcon, 
   DocumentTextIcon, 
@@ -295,11 +296,19 @@ const navigationItems = getNavigationItems();
         </div>
 
         {/* Left Sidebar */}
+        <MobileNav
+          items={navigationItems}
+          user={user}
+          onLogout={handleLogout}
+          headerIcon={<BriefcaseIcon className="h-6 w-6 text-white" />}
+          headerTitle="AI Interview Pro"
+        />
+
         <motion.aside
           initial={{ x: -300 }}
           animate={{ x: 0 }}
           transition={{ duration: 0.5 }}
-          className="w-64 border-r border-white/10 bg-white/5 backdrop-blur-xl flex flex-col relative z-10 flex-shrink-0"
+          className="hidden md:flex w-64 border-r border-white/10 bg-white/5 backdrop-blur-xl flex-col relative z-10 flex-shrink-0"
         >
           <div className="p-6 border-b border-white/10">
             <div className="flex items-center space-x-3">
@@ -363,7 +372,7 @@ const navigationItems = getNavigationItems();
         </motion.aside>
 
         {/* Main Dashboard Content */}
-        <main className="flex-1 overflow-y-auto relative z-10">
+        <main className="flex-1 overflow-y-auto relative z-10 pt-14 md:pt-0">
           <div className="max-w-6xl mx-auto p-8">
             <motion.div
               initial={{ opacity: 0, y: -20 }}
@@ -655,18 +664,18 @@ const navigationItems = getNavigationItems();
               className="flex items-center space-x-2"
             >
               <SparklesIcon className="h-8 w-8 text-blue-400" />
-              <span className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+              <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
                 AI Interview Pro
               </span>
             </motion.div>
             
-            <div className="flex items-center space-x-6">
-              <Link to="/login" className="text-gray-300 hover:text-white px-4 py-2 text-sm font-medium transition">
+            <div className="flex items-center space-x-2 sm:space-x-6">
+              <Link to="/login" className="text-gray-300 hover:text-white px-2 sm:px-4 py-2 text-sm font-medium transition">
                 Login
               </Link>
-              <Link 
-                to="/register" 
-                className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-2 rounded-full text-sm font-medium hover:shadow-lg hover:shadow-blue-500/25 transition-all duration-300"
+              <Link
+                to="/register"
+                className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-4 sm:px-6 py-2 rounded-full text-sm font-medium hover:shadow-lg hover:shadow-blue-500/25 transition-all duration-300 whitespace-nowrap"
               >
                 Get Started Free
               </Link>
@@ -696,7 +705,7 @@ const navigationItems = getNavigationItems();
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.1 }}
-                className="text-5xl md:text-7xl font-bold mb-6"
+                className="text-4xl sm:text-5xl md:text-7xl font-bold mb-6"
               >
                 Master Your Next
                 <span className="block bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
